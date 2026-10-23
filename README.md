@@ -19,7 +19,7 @@ npm test        # node --test
 
 ## 배포용 zip
 
-`npm run build` 후 `manifest.json`**, **`dist/`**, **`src/styles/` 만 담는다.
+`npm run build` 후 **`manifest.json`**, **`dist/`**, **`src/styles/`** 만 담는다.
 
 ```text
 zip -r ambient-light.zip manifest.json dist src/styles
