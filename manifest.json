@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Ambient Light",
+  "version": "0.2",
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["dist/content.js"],
+      "css": ["src/styles/ambient.css", "src/styles/yt-overrides.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
