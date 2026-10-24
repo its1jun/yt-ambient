@@ -1,11 +1,11 @@
 {
   "name": "yt-ambient",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --outfile=dist/content.js --target=es2022",
-    "watch": "esbuild src/main.js --bundle --outfile=dist/content.js --target=es2022 --watch"
+    "build": "esbuild scripts/main.js --bundle --outfile=dist/content.js --target=es2022",
+    "watch": "esbuild scripts/main.js --bundle --outfile=dist/content.js --target=es2022 --watch"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"

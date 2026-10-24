@@ -1,0 +1,41 @@
+/* 앰비언트 wrapper: 위치/크기는 mount.js가 인라인으로 넣는다. 블러와 채도는 renderer.js의 셰이더가 처리한다 */
+#ambient-light-wrapper {
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+  overflow: visible;
+}
+
+/* 층이 플레이어 밖으로 넓게 그려져도 가로 스크롤이 생기지 않게 가로 방향만 잘라낸다 */
+html[data-yt-ambient="on"] #content.ytd-app {
+  overflow-x: clip;
+}
+
+/* 세로 스크롤바 제거 (앰비언트가 켜졌을 때만 적용) */
+html[data-yt-ambient="on"] {
+  scrollbar-width: none !important;
+}
+html[data-yt-ambient="on"]::-webkit-scrollbar,
+html[data-yt-ambient="on"] body::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* 검출된 검은 띠(레터박스)를 영상에서 잘라낸다. 변수는 mount.js가 <html>에 넣는다 (변수가 없으면 clip-path도 없다) */
+html[data-yt-ambient="on"] .html5-main-video {
+  clip-path: inset(var(--ambient-clip-inset));
+}
+
+/* 앰비언트가 켜진 동안 원본 영상의 상하좌우 가장자리를 부드럽게 투명화한다 */
+/* 잘라낸 검은 띠(--ambient-clip-inset-x/-y, 띠가 없으면 0%)만큼 페더링 시작 위치를 안쪽으로 옮긴다. 변수 이름은 mount.js에서 clipVar 뒤에 붙는 -x/-y와 같아야 한다 */
+html[data-yt-ambient="on"] .html5-main-video {
+  --clip-x: var(--ambient-clip-inset-x, 0%);
+  --clip-y: var(--ambient-clip-inset-y, 0%);
+  -webkit-mask-image:
+    linear-gradient(to right, transparent var(--clip-x), #000 calc(var(--clip-x) + var(--video-feather)), #000 calc(100% - var(--clip-x) - var(--video-feather)), transparent calc(100% - var(--clip-x))),
+    linear-gradient(to bottom, transparent var(--clip-y), #000 calc(var(--clip-y) + var(--video-feather)), #000 calc(100% - var(--clip-y) - var(--video-feather)), transparent calc(100% - var(--clip-y)));
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent var(--clip-x), #000 calc(var(--clip-x) + var(--video-feather)), #000 calc(100% - var(--clip-x) - var(--video-feather)), transparent calc(100% - var(--clip-x))),
+    linear-gradient(to bottom, transparent var(--clip-y), #000 calc(var(--clip-y) + var(--video-feather)), #000 calc(100% - var(--clip-y) - var(--video-feather)), transparent calc(100% - var(--clip-y)));
+  mask-composite: intersect;
+}

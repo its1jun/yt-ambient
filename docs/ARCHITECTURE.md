@@ -25,7 +25,7 @@ src/
   core/store.js        상태 보관 + deriveRunState (순수)
   core/layout.js       computeLayout (순수)
   core/controller.js   reconcile 상태 머신, 옵저버/렌더러/마운트 조율
-  render/renderer.js   단일 canvas 렌더 루프 (YouTube 모름)
+  render/renderer.js   단일 canvas WebGL2 렌더 루프 (YouTube 모름)
   dom/mount.js         wrapper+canvas 생성/제거, 스타일 적용(diff), 루트 속성 토글
   styles/ambient.css
   styles/yt-overrides.css   모든 규칙이 html[data-yt-ambient="on"] 하위로 스코프됨
@@ -62,11 +62,11 @@ manifest.json          dist/content.js + src/styles/*.css 로드
 
 ### 3-4. 단일 canvas 렌더링 (레거시 시각 효과 재현 방식)
 
-**canvas 1개**에 바깥 층부터 안쪽 층 순으로 `drawImage(capture → canvas)`를 N회 그린다. i번째 층 = **영상 박스를 사방으로 **`layerGapPx × i`** px씩 넓힌 박스**. 그래서 계단 한 칸의 폭은 영상 크기와 방향(가로/세로)에 상관없이 항상 `layerGapPx`이다. (이전 방식은 영상 크기 × `scaleStep` 비율로 키워서 영상이 클수록, 가로가 세로보다 계단이 넓었다.)
+**canvas 1개**에 바깥 층부터 안쪽 층 순으로 capture 텍스처를 N개 층으로 합성한다(WebGL2, 화면 전체 사각형 1장을 그리고 층 계산은 셰이더가 픽셀마다 한다). i번째 층 = **영상 박스를 사방으로 **`layerGapPx × i`** px씩 넓힌 박스**. 그래서 계단 한 칸의 폭은 영상 크기와 방향(가로/세로)에 상관없이 항상 `layerGapPx`이다. (이전 방식은 영상 크기 × `scaleStep` 비율로 키워서 영상이 클수록, 가로가 세로보다 계단이 넓었다.)
 
 - canvas의 CSS 박스(`canvasBox`) = **플레이어 박스 ∪ 가장 바깥 층 박스**의 외접 사각형. 플레이어 박스 기준 상대 좌표이며 음수 오프셋이 가능하다.
 - 층 개수는 영상 박스가 플레이어 안쪽으로 떨어진 거리(왼/오/위/아래) 중 가장 큰 값으로 정한다: `N = min(40, max(1, ceil(가장 큰 거리 / layerGapPx)))`. (덮을 수 있는 최대 거리 = `40 × layerGapPx`)
-- 가장자리 투명 폭은 `edgeFeatherPx`(px)이며, `computeLayout`이 영상 크기 대비 비율(`feather.x`, `feather.y`)로 바꿔 renderer에 넘긴다. 투명 처리는 capture 이미지에 한 번만 하므로 바깥 층일수록 화면에서는 조금 더 넓어진다.
+- 가장자리 투명 폭은 `edgeFeatherPx`(px)이며, `computeLayout`이 영상 크기 대비 비율(`feather.x`, `feather.y`)로 바꿔 renderer에 넘긴다. 투명 처리는 층마다 셰이더가 자기 사각형 가장자리에서 하며, 바깥 층일수록 화면에서는 조금 더 넓어진다.
 - blur/saturate는 canvas 요소(또는 wrapper)에 CSS `filter`로 1회 적용.
 
 ---
@@ -86,7 +86,7 @@ export const CONFIG = Object.freeze({
   captureLongSide: 256,   // 영상 샘플링 canvas 긴 변
   canvasLongSide: 256,    // 앰비언트 canvas 내부 해상도 긴 변
   edgeFeatherPx: 40,      // 층 가장자리가 투명해지는 폭 (CSS px, 0 이하면 끔)
-  drmErrorLimit: 3,       // 연속 drawImage 예외 허용 횟수
+  drmErrorLimit: 3,       // 연속 그리기 예외 허용 횟수
   retry: { maxAttempts: 10, intervalMs: 300 },
   wrapperId: 'ambient-light-wrapper',
   rootAttr: 'data-yt-ambient',   // 값 'on' | 없음
@@ -195,12 +195,12 @@ export function createRenderer({ config }): {
 export function shouldDrawFrame(nowMs, lastDrawMs, maxFps): boolean   // 순수. 테스트 대상
 ```
 
-- 프레임당: `drawImage(video → captureCanvas)` 1회 → `canvas.clear` 후 `layout.draws`를 순서대로 `drawImage(captureCanvas → canvas, dx,dy,dw,dh)`.
+- 프레임당: `video → videoTexture` 업로드 1회(+mipmap) → `captureTexture`(captureSize)에 줄여 옮기기 1회 → 화면 전체 사각형 1장으로 `layout.draws`의 모든 층을 한 번에 합성(셰이더가 검은 바탕 위에 바깥층부터 겹침, `crop` 영역만 읽고, 가장자리 투명 처리는 `layout.feather`로 한다. 층 수 상한은 `layout.js`의 `MAX_LAYER_COUNT`와 같은 40).
 - `maxFps` 초과 프레임은 건너뛴다(콜백은 계속 재등록하되 draw만 생략).
 - 미디어 이벤트: `play`(재개), `pause`(재등록 중단), `seeked`(일시정지 상태면 1프레임 갱신), `emptied`/`loadstart`(레이아웃 재계산은 controller 몫이므로 여기선 무시).
-- `drawImage` 예외가 `config.drmErrorLimit`회 연속이면 해당 video에 대해 **루프 중단**하고 `console.debug` 1회. 새 `attach` 시 카운터 리셋. (DRM이 예외가 아니라 **검은 프레임**일 수 있음 → V2, Uncertain)
+- 그리기(`texImage2D` 등) 예외가 `config.drmErrorLimit`회 연속이면 해당 video에 대해 **루프 중단**하고 `console.debug` 1회. 새 `attach` 시 카운터 리셋. (DRM이 예외가 아니라 **검은 프레임**일 수 있음 → V2, Uncertain)
 - `visibilitychange`/표시 판단은 하지 않는다(controller가 start/stop으로 제어).
-- 구현 메모: `env`(`createCanvas`, `now`, `logger`)는 테스트용 선택 인자. `detach()`는 `stop()`을 포함하므로 `attach()` 뒤에는 `start()`를 다시 불러야 한다. `start()`는 일시정지 상태여도 1프레임을 그리고, `setLayout()`은 실행 중이면 바로 다시 그린다. `shouldDrawFrame`은 지터 여유 2ms를 두며 `maxFps<=0`은 제한 없음, `lastDrawMs<=0`은 처음을 뜻한다. 연속 실패로 중단되면 새 `attach()` 전까지 `start()`를 무시한다.
+- 구현 메모: `env`(`createCanvas`, `now`, `logger`)는 테스트용 선택 인자이며 `createCanvas`는 검은 띠 측정용 2D canvas에만 쓴다. `detach()`는 `stop()`을 포함하므로 `attach()` 뒤에는 `start()`를 다시 불러야 한다. `start()`는 일시정지 상태여도 1프레임을 그리고, `setLayout()`은 실행 중이면 바로 다시 그린다. `shouldDrawFrame`은 지터 여유 2ms를 두며 `maxFps<=0`은 제한 없음, `lastDrawMs<=0`은 처음을 뜻한다. 연속 실패로 중단되면 새 `attach()` 전까지 `start()`를 무시한다.
 
 ### 4-8. `core/controller.js`
 
@@ -240,6 +240,7 @@ export function createController({ adapter, store, mount, renderer, config, comp
 - **V1~V7 대부분 **`Unverified`: 전체화면 시 mountParent 표시, DRM 영상 동작(예외인지 검은 프레임인지), scroll 리스너 필요 여부, `#movie_player` 존재 등은 `docs/VERIFICATION.md`에 사람이 확인한 결과만 근거로 삼는다.
 - scroll 리스너는 없다. 스크롤 시 wrapper가 어긋나면 V4를 "필요"로 기록하고 RUNNING 중에만 rAF 병합 리스너를 추가한다.
 - 앰비언트 canvas는 `alpha:false`라서, 가장 큰 배율 박스가 플레이어를 덮지 못하는 배치에서는 빈 영역이 검게 보일 수 있다.
+- WebGL2가 없으면 동작하지 않고 `console.warn` 1회. GPU 컨텍스트가 유실되면 그리기를 멈췄다가 복구 시 자원을 다시 만들어 이어 그린다. DRM 영상이 예외 대신 검은 프레임으로 올라오는지는 실제 확인 전까지 Uncertain.
 - adapter는 페이지 이동 없이 `<video>` 요소만 교체되는 경우를 즉시 알아채지 못할 수 있다.
 - `yt-overrides.css` 선택자의 필요 여부 분류는 추정이다 (V8 표).
 - fps 제한의 실제 체감 값, 튜닝 후보(`maxFps`, 해상도, blur)의 채택은 사람이 측정/육안 확인한 뒤 `config.js`에 반영한다.

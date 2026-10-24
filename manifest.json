@@ -6,7 +6,7 @@
     {
       "matches": ["https://www.youtube.com/*"],
       "js": ["dist/content.js"],
-      "css": ["src/styles/ambient.css", "src/styles/yt-overrides.css"],
+      "css": ["styles/ambient.css", "styles/yt-overrides.css"],
       "run_at": "document_idle"
     }
   ]
