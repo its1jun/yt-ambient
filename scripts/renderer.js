@@ -437,6 +437,7 @@ export function createRenderer({ config, env = {} }) {
     } catch (error) {
       logger.warn('[yt-ambient] Failed to set up WebGL resources.', error);
       releaseGlResources();
+      gl = null;
       return false;
     }
     return true;
@@ -784,6 +785,11 @@ export function createRenderer({ config, env = {} }) {
     canvas = null;
   }
 
+  // WebGL 컨텍스트를 얻어 attach가 성공한 상태인지 알려준다 (얻지 못했으면 false)
+  function hasGl() {
+    return gl !== null;
+  }
+
   // 모든 것을 해제한다
   function destroy() {
     detach();
@@ -795,5 +801,5 @@ export function createRenderer({ config, env = {} }) {
     barsListener = typeof listener === 'function' ? listener : null;
   }
 
-  return { attach, setLayout, start, stop, detach, destroy, onBarsChange };
+  return { attach, setLayout, start, stop, detach, destroy, onBarsChange, hasGl };
 }

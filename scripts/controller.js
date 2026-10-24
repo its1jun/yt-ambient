@@ -103,8 +103,6 @@ export function createController({ adapter, store, mount, renderer, config, comp
   function enterRunning(s) {
     const parentChanged = applied.parent !== s.mountParent;
     const { canvas } = mount.mount(s.mountParent);
-    mount.setRootAttr(true);
-    mount.setVisible(true);
 
     // 영상이나 canvas가 바뀐 경우에만 renderer를 새로 연결한다 (attach는 내부에서 stop도 한다)
     if (bound.video !== s.video || bound.canvas !== canvas) {
@@ -112,6 +110,15 @@ export function createController({ adapter, store, mount, renderer, config, comp
       bound = { video: s.video, canvas };
     }
     applied = { state: 'RUNNING', player: s.player, video: s.video, parent: s.mountParent };
+
+    // WebGL을 얻지 못했으면 앰비언트를 켜지 않는다 (<html> 속성이 없으면 영상 페더링 등 화면 변경도 적용되지 않는다)
+    if (!renderer.hasGl()) {
+      mount.setRootAttr(false);
+      mount.setVisible(false);
+      return;
+    }
+    mount.setRootAttr(true);
+    mount.setVisible(true);
     if (parentChanged) lastLayout = null;   // 부모가 바뀌면 좌표 기준이 달라지므로 다시 적용
 
     observeElements(s.player, s.video);

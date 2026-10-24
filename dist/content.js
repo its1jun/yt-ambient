@@ -371,13 +371,18 @@
     function enterRunning(s) {
       const parentChanged = applied.parent !== s.mountParent;
       const { canvas } = mount.mount(s.mountParent);
-      mount.setRootAttr(true);
-      mount.setVisible(true);
       if (bound.video !== s.video || bound.canvas !== canvas) {
         renderer.attach(s.video, canvas);
         bound = { video: s.video, canvas };
       }
       applied = { state: "RUNNING", player: s.player, video: s.video, parent: s.mountParent };
+      if (!renderer.hasGl()) {
+        mount.setRootAttr(false);
+        mount.setVisible(false);
+        return;
+      }
+      mount.setRootAttr(true);
+      mount.setVisible(true);
       if (parentChanged) lastLayout = null;
       observeElements(s.player, s.video);
       cancelRelayout();
@@ -1072,6 +1077,7 @@ void main() {
       } catch (error) {
         logger.warn("[yt-ambient] Failed to set up WebGL resources.", error);
         releaseGlResources();
+        gl = null;
         return false;
       }
       return true;
@@ -1352,6 +1358,9 @@ void main() {
       video = null;
       canvas = null;
     }
+    function hasGl() {
+      return gl !== null;
+    }
     function destroy() {
       detach();
       layout = null;
@@ -1359,7 +1368,7 @@ void main() {
     function onBarsChange(listener) {
       barsListener = typeof listener === "function" ? listener : null;
     }
-    return { attach, setLayout, start, stop, detach, destroy, onBarsChange };
+    return { attach, setLayout, start, stop, detach, destroy, onBarsChange, hasGl };
   }
 
   // scripts/main.js
