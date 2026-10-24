@@ -1,18 +1,25 @@
 (() => {
-  // src/config.js
+  // scripts/config.js
   var CONFIG = Object.freeze({
-    blurPx: 20,
-    // 흐림 정도 (CSS px)
+    blurPx: 24,
+    // 흐림 정도 (CSS px). 층 간격(layerGapPx)의 약 2배 안팎이면 계단이 뭉개져 부드러운 확산광이 된다
     saturate: 1,
     // 채도 배율 (1 = 원본)
+    videoFeatherPercent: 20,
+    // 유튜브 원본 영상 가장자리 페더링 폭 (%)
     maxFps: 15,
     // 초당 그리기 상한 (0 이하면 제한 없음)
-    layerGapPx: 32,
+    layerGapPx: 48,
     // 층 하나가 사방으로 넓어지는 폭 (CSS px). 계단 한 칸의 실제 폭. 작을수록 층이 늘어 비용 증가 (권장 24~64)
     captureLongSide: 192,
     // 영상 샘플링 canvas의 긴 변 (px)
     canvasLongSide: 288,
     // 앰비언트 canvas 내부 해상도의 긴 변 (px)
+    fanAngleDeg: 15,
+    // 부채꼴 한쪽 각도 (도, 0~60). 층의 색을 중심에서 이 각도 안으로 퍼뜨려 평균내어 방사형 줄무늬를 흐린다. 0이면 끔(기존 모습). 클수록 넓게 퍼진다
+    // 앰비언트 실행을 허용할 화면 모드 
+    // ['default','theater','fullscreen']
+    enabledModes: ["theater"],
     drmErrorLimit: 3,
     // drawImage가 연속으로 실패해도 허용하는 횟수 (넘으면 그 영상은 중단)
     retry: {
@@ -53,13 +60,10 @@
       // 같은 값으로 볼 오차 (%p)
       clipVar: "--ambient-clip-inset"
       // <html>에 넣는 CSS 변수 이름 (styles/ambient.css의 이름과 같아야 한다)
-    },
-    // 앰비언트 실행을 허용할 화면 모드 
-    // ['default','theater','fullscreen']
-    enabledModes: ["theater"]
+    }
   });
 
-  // src/yt/selectors.js
+  // scripts/selectors.js
   var SEL = Object.freeze({
     mountParent: "#content.ytd-app",
     // 앰비언트 div를 넣을 부모
@@ -76,7 +80,7 @@
     // 앰비언트를 적용할 주소 경로
   });
 
-  // src/core/store.js
+  // scripts/store.js
   var DEFAULT_STATE = Object.freeze({
     isWatchPage: false,
     mode: "default",
@@ -124,7 +128,7 @@
     return { get, set, subscribe };
   }
 
-  // src/core/layout.js
+  // scripts/layout.js
   var EPSILON = 0.01;
   var MAX_LAYER_COUNT = 40;
   var MAX_BAR_PERCENT = 49;
@@ -289,7 +293,7 @@
     return a.draws.every((d, i) => near(d.dx, b.draws[i].dx) && near(d.dy, b.draws[i].dy) && near(d.dw, b.draws[i].dw) && near(d.dh, b.draws[i].dh));
   }
 
-  // src/core/controller.js
+  // scripts/controller.js
   function emptyApplied() {
     return { state: "IDLE", player: null, video: null, parent: null };
   }
@@ -424,7 +428,7 @@
     return { start, stop };
   }
 
-  // src/yt/adapter.js
+  // scripts/adapter.js
   var INITIAL_FACTS = Object.freeze({
     isWatchPage: false,
     mode: "default",
@@ -541,7 +545,7 @@
     return { start, stop, getFacts };
   }
 
-  // src/dom/mount.js
+  // scripts/mount.js
   function px(value) {
     return `${value}px`;
   }
@@ -561,8 +565,16 @@
       const inset = x > 0 || y > 0 ? `${+y.toFixed(3)}% ${+x.toFixed(3)}%` : "";
       if (applied.clip === inset) return;
       const rootStyle = doc.documentElement.style;
-      if (inset) rootStyle.setProperty(config.bars.clipVar, inset);
-      else rootStyle.removeProperty(config.bars.clipVar);
+      const clipVar = config.bars.clipVar;
+      if (inset) {
+        rootStyle.setProperty(clipVar, inset);
+        rootStyle.setProperty(`${clipVar}-x`, `${+x.toFixed(3)}%`);
+        rootStyle.setProperty(`${clipVar}-y`, `${+y.toFixed(3)}%`);
+      } else {
+        rootStyle.removeProperty(clipVar);
+        rootStyle.removeProperty(`${clipVar}-x`);
+        rootStyle.removeProperty(`${clipVar}-y`);
+      }
       applied.clip = inset;
     }
     function removeStaleWrapper() {
@@ -576,8 +588,6 @@
       wrapper.setAttribute("aria-hidden", "true");
       wrapper.style.pointerEvents = "none";
       wrapper.style.zIndex = "-1";
-      wrapper.style.setProperty("--ambient-blur", px(config.blurPx));
-      wrapper.style.setProperty("--ambient-saturate", String(config.saturate));
       setStyle(wrapper, "display", "display", "none");
       canvas = doc.createElement("canvas");
       canvas.style.position = "absolute";
@@ -609,11 +619,19 @@
     }
     function setRootAttr(on) {
       const root = doc.documentElement;
-      if (on) root.setAttribute(config.rootAttr, "on");
-      else root.removeAttribute(config.rootAttr);
+      if (on) {
+        root.setAttribute(config.rootAttr, "on");
+        root.style.setProperty("--video-feather", `${config.videoFeatherPercent}%`);
+      } else {
+        root.removeAttribute(config.rootAttr);
+        root.style.removeProperty("--video-feather");
+      }
     }
     function unmount() {
       doc.documentElement.style.removeProperty(config.bars.clipVar);
+      doc.documentElement.style.removeProperty(`${config.bars.clipVar}-x`);
+      doc.documentElement.style.removeProperty(`${config.bars.clipVar}-y`);
+      doc.documentElement.style.removeProperty("--video-feather");
       if (wrapper) wrapper.remove();
       wrapper = null;
       canvas = null;
@@ -625,7 +643,7 @@
     return { mount, applyLayout, setVisible, setRootAttr, unmount, getCanvas };
   }
 
-  // src/core/bars.js
+  // scripts/bars.js
   function isBlackPixel(data, index, sumMax, diffMax) {
     const r = data[index];
     const g = data[index + 1];
@@ -687,12 +705,173 @@
     return { push, reset };
   }
 
-  // src/render/renderer.js
+  // scripts/renderer.js
   var FRAME_SLACK_MS = 2;
+  var MAX_LAYERS = 40;
+  var FAN_TAPS = 2;
+  var MAX_FAN_ANGLE_DEG = 60;
+  var CAPTURE_TAPS = 4;
+  var MAX_BLUR_RADIUS = 24;
+  var MIN_READY_STATE = 2;
+  var VERTEX_SOURCE = `#version 300 es
+layout(location = 0) in vec2 a_corner;
+uniform vec4 u_rect;
+uniform vec4 u_uv;
+out vec2 v_local;
+out vec2 v_uv;
+void main() {
+  v_local = a_corner;
+  v_uv = u_uv.xy + a_corner * u_uv.zw;
+  gl_Position = vec4(u_rect.xy + a_corner * u_rect.zw, 0.0, 1.0);
+}`;
+  var CAPTURE_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+#define CAPTURE_TAPS ${CAPTURE_TAPS}
+in vec2 v_uv;
+uniform sampler2D u_tex;
+uniform vec2 u_footprint;
+out vec4 outColor;
+void main() {
+  vec3 sum = vec3(0.0);
+  for (int y = 0; y < CAPTURE_TAPS; y++) {
+    for (int x = 0; x < CAPTURE_TAPS; x++) {
+      vec2 offset = (vec2(float(x), float(y)) + 0.5) / float(CAPTURE_TAPS) - 0.5;
+      sum += texture(u_tex, v_uv + offset * u_footprint).rgb;
+    }
+  }
+  outColor = vec4(sum / float(CAPTURE_TAPS * CAPTURE_TAPS), 1.0);
+}`;
+  var COMPOSITE_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+#define MAX_LAYERS ${MAX_LAYERS}
+#define FAN_TAPS ${FAN_TAPS}
+const float OPAQUE_LIMIT = 0.999;  // \uC313\uC778 \uBD88\uD22C\uBA85\uB3C4\uAC00 \uC774 \uAC12 \uC774\uC0C1\uC774\uBA74 \uB354 \uBC14\uAE65 \uCE35\uC740 \uBCF4\uC774\uC9C0 \uC54A\uC73C\uBBC0\uB85C \uC77D\uC9C0 \uC54A\uB294\uB2E4
+in vec2 v_local;
+uniform sampler2D u_tex;
+uniform vec2 u_canvasSize;
+uniform vec4 u_crop;
+uniform vec2 u_feather;
+uniform float u_fanAngle;
+uniform int u_layerCount;
+uniform vec4 u_boxes[MAX_LAYERS];
+out vec4 outColor;
+
+// \uCE35 \uC548\uC758 \uC704\uCE58(local)\uB97C \uCE35 \uC911\uC2EC \uAE30\uC900\uC73C\uB85C angle(\uB77C\uB514\uC548)\uB9CC\uD07C \uB3CC\uB9B0\uB2E4. aspect = \uCE35\uC758 \uAC00\uB85C/\uC138\uB85C \uBE44\uC728 (\uBE44\uC728\uC744 \uBCF4\uC815\uD574\uC57C \uC6D0\uD638\uB85C \uB3C8\uB2E4)
+vec2 rotateAroundCenter(vec2 local, float angle, float aspect) {
+  vec2 v = (local - 0.5) * vec2(aspect, 1.0);
+  float s = sin(angle);
+  float c = cos(angle);
+  v = vec2(c * v.x - s * v.y, s * v.x + c * v.y);
+  return clamp(v / vec2(aspect, 1.0) + 0.5, 0.0, 1.0);
+}
+
+// \uBD80\uCC44\uAF34 \uC0D8\uD50C\uB9C1: \uC911\uC2EC\uC5D0\uC11C \uAC19\uC740 \uAC70\uB9AC\uC778 \uC810\uC744 -u_fanAngle ~ +u_fanAngle \uBC94\uC704\uC5D0\uC11C \uC5EC\uB7EC \uACF3 \uC77D\uC5B4 \uD3C9\uADE0\uB0B8\uB2E4
+// \uAC00\uC911\uCE58\uB294 \uC911\uC2EC\uC120\uC774 \uAC00\uC7A5 \uD06C\uACE0 \uBD80\uCC44\uAF34 \uB05D\uC73C\uB85C \uAC08\uC218\uB85D 0\uC5D0 \uAC00\uAE4C\uC6CC\uC838, \uAC01\uB3C4 \uBC94\uC704\uC758 \uAC00\uC7A5\uC790\uB9AC\uAC00 \uBD80\uB4DC\uB7FD\uAC8C \uC0AC\uB77C\uC9C4\uB2E4
+vec3 sampleFan(vec2 local, float aspect) {
+  vec3 sum = vec3(0.0);
+  float weightSum = 0.0;
+  for (int k = -FAN_TAPS; k <= FAN_TAPS; k++) {
+    float t = float(k) / float(FAN_TAPS + 1);
+    float w = cos(t * 1.5707963);
+    w *= w;
+    vec2 p = rotateAroundCenter(local, t * u_fanAngle, aspect);
+    sum += textureLod(u_tex, u_crop.xy + p * u_crop.zw, 0.0).rgb * w;
+    weightSum += w;
+  }
+  return sum / weightSum;
+}
+
+void main() {
+  vec2 pixel = v_local * u_canvasSize;
+  vec3 accum = vec3(0.0);   // \uC9C0\uAE08\uAE4C\uC9C0 \uC313\uC778 \uC0C9 (\uBD88\uD22C\uBA85\uB3C4\uB97C \uBBF8\uB9AC \uACF1\uD55C \uAC12)
+  float covered = 0.0;      // \uC9C0\uAE08\uAE4C\uC9C0 \uC313\uC778 \uBD88\uD22C\uBA85\uB3C4 (0~1)
+  for (int j = 0; j < MAX_LAYERS; j++) {
+    if (j >= u_layerCount) break;
+    vec4 box = u_boxes[u_layerCount - 1 - j];
+    vec2 local = (pixel - box.xy) / box.zw;
+    if (local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0) continue;
+    vec2 edge = min(local, 1.0 - local);
+    float alphaX = u_feather.x > 0.0 ? clamp(edge.x / u_feather.x, 0.0, 1.0) : 1.0;
+    float alphaY = u_feather.y > 0.0 ? clamp(edge.y / u_feather.y, 0.0, 1.0) : 1.0;
+    float alpha = alphaX * alphaY;
+    if (alpha <= 0.0) continue;
+    vec3 color = u_fanAngle > 0.0
+      ? sampleFan(local, box.z / box.w)
+      : textureLod(u_tex, u_crop.xy + local * u_crop.zw, 0.0).rgb;
+    accum += (1.0 - covered) * alpha * color;
+    covered += (1.0 - covered) * alpha;
+    if (covered >= OPAQUE_LIMIT) break;
+  }
+  outColor = vec4(accum, 1.0);
+}`;
+  var BLUR_FRAGMENT_SOURCE = `#version 300 es
+precision highp float;
+#define MAX_BLUR_RADIUS ${MAX_BLUR_RADIUS}
+in vec2 v_uv;
+uniform sampler2D u_tex;
+uniform vec2 u_step;
+uniform float u_sigma;
+uniform float u_saturate;
+out vec4 outColor;
+void main() {
+  vec3 sum = texture(u_tex, v_uv).rgb;
+  float weightSum = 1.0;
+  int radius = min(MAX_BLUR_RADIUS, int(ceil(u_sigma * 3.0)));
+  float falloff = u_sigma > 0.0 ? -0.5 / (u_sigma * u_sigma) : 0.0;
+  for (int k = 1; k <= MAX_BLUR_RADIUS; k += 2) {
+    if (k > radius) break;
+    float w0 = exp(float(k * k) * falloff);
+    float w1 = (k + 1 <= radius) ? exp(float((k + 1) * (k + 1)) * falloff) : 0.0;
+    float w = w0 + w1;
+    float shift = w > 0.0 ? w1 / w : 0.0;
+    vec2 offset = u_step * (float(k) + shift);
+    sum += (texture(u_tex, v_uv + offset).rgb + texture(u_tex, v_uv - offset).rgb) * w;
+    weightSum += 2.0 * w;
+  }
+  vec3 color = sum / weightSum;
+  float gray = dot(color, vec3(0.2126, 0.7152, 0.0722));
+  outColor = vec4(mix(vec3(gray), color, u_saturate), 1.0);
+}`;
   function shouldDrawFrame(nowMs, lastDrawMs, maxFps) {
     if (!Number.isFinite(maxFps) || maxFps <= 0) return true;
     if (!Number.isFinite(lastDrawMs) || lastDrawMs <= 0) return true;
     return nowMs - lastDrawMs >= 1e3 / maxFps - FRAME_SLACK_MS;
+  }
+  function compileShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(shader);
+      gl.deleteShader(shader);
+      throw new Error(`shader compile failed: ${log}`);
+    }
+    return shader;
+  }
+  function createProgram(gl, vertexSource, fragmentSource) {
+    const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
+    const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(program);
+      gl.deleteProgram(program);
+      throw new Error(`program link failed: ${log}`);
+    }
+    return program;
+  }
+  function createTexture(gl, minFilter) {
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return texture;
   }
   function createRenderer({ config, env = {} }) {
     const createCanvas = env.createCanvas || (() => document.createElement("canvas"));
@@ -700,13 +879,34 @@
     const logger = env.logger || console;
     let video = null;
     let canvas = null;
-    let ctx = null;
-    let captureCanvas = null;
-    let captureCtx = null;
     let layout = null;
-    let featherH = null;
-    let featherV = null;
-    let featherKey = "";
+    let gl = null;
+    let glReady = false;
+    let glAbort = null;
+    let captureProgram = null;
+    let captureUniforms = null;
+    let compositeProgram = null;
+    let compositeUniforms = null;
+    const layerBoxes = new Float32Array(MAX_LAYERS * 4);
+    let layerCount = 0;
+    let layoutDirty = true;
+    let quadVao = null;
+    let quadBuffer = null;
+    let videoTexture = null;
+    let videoTextureWidth = 0;
+    let videoTextureHeight = 0;
+    let captureTexture = null;
+    let captureFramebuffer = null;
+    let captureWidth = 0;
+    let captureHeight = 0;
+    let blurProgram = null;
+    let blurUniforms = null;
+    let sceneTexture = null;
+    let sceneFramebuffer = null;
+    let blurTexture = null;
+    let blurFramebuffer = null;
+    let targetWidth = 0;
+    let targetHeight = 0;
     let running = false;
     let halted = false;
     let frameHandle = null;
@@ -714,6 +914,7 @@
     let errorCount = 0;
     let lastDrawMs = 0;
     let warnedNoRvfc = false;
+    let warnedNoGl = false;
     const barOptions = config.bars || { enabled: false };
     const stabilizer = createBarStabilizer(barOptions);
     let barLocked = false;
@@ -722,13 +923,169 @@
     let lastSampleMs = 0;
     let emittedBars = { x: 0, y: 0 };
     let barsListener = null;
+    function allocateCapture(width, height) {
+      gl.bindTexture(gl.TEXTURE_2D, captureTexture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, captureFramebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, captureTexture, 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      captureWidth = width;
+      captureHeight = height;
+    }
+    function allocateTargets(width, height) {
+      [[sceneTexture, sceneFramebuffer], [blurTexture, blurFramebuffer]].forEach(([texture, framebuffer]) => {
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      });
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      targetWidth = width;
+      targetHeight = height;
+    }
+    function buildGlResources() {
+      captureProgram = createProgram(gl, VERTEX_SOURCE, CAPTURE_FRAGMENT_SOURCE);
+      captureUniforms = {
+        rect: gl.getUniformLocation(captureProgram, "u_rect"),
+        uv: gl.getUniformLocation(captureProgram, "u_uv"),
+        tex: gl.getUniformLocation(captureProgram, "u_tex"),
+        footprint: gl.getUniformLocation(captureProgram, "u_footprint")
+      };
+      compositeProgram = createProgram(gl, VERTEX_SOURCE, COMPOSITE_FRAGMENT_SOURCE);
+      compositeUniforms = {
+        rect: gl.getUniformLocation(compositeProgram, "u_rect"),
+        uv: gl.getUniformLocation(compositeProgram, "u_uv"),
+        tex: gl.getUniformLocation(compositeProgram, "u_tex"),
+        canvasSize: gl.getUniformLocation(compositeProgram, "u_canvasSize"),
+        crop: gl.getUniformLocation(compositeProgram, "u_crop"),
+        feather: gl.getUniformLocation(compositeProgram, "u_feather"),
+        fanAngle: gl.getUniformLocation(compositeProgram, "u_fanAngle"),
+        layerCount: gl.getUniformLocation(compositeProgram, "u_layerCount"),
+        boxes: gl.getUniformLocation(compositeProgram, "u_boxes")
+      };
+      blurProgram = createProgram(gl, VERTEX_SOURCE, BLUR_FRAGMENT_SOURCE);
+      blurUniforms = {
+        rect: gl.getUniformLocation(blurProgram, "u_rect"),
+        uv: gl.getUniformLocation(blurProgram, "u_uv"),
+        tex: gl.getUniformLocation(blurProgram, "u_tex"),
+        step: gl.getUniformLocation(blurProgram, "u_step"),
+        sigma: gl.getUniformLocation(blurProgram, "u_sigma"),
+        saturate: gl.getUniformLocation(blurProgram, "u_saturate")
+      };
+      quadVao = gl.createVertexArray();
+      gl.bindVertexArray(quadVao);
+      quadBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      gl.bindVertexArray(null);
+      videoTexture = createTexture(gl, gl.LINEAR);
+      captureTexture = createTexture(gl, gl.LINEAR);
+      captureFramebuffer = gl.createFramebuffer();
+      sceneTexture = createTexture(gl, gl.LINEAR);
+      sceneFramebuffer = gl.createFramebuffer();
+      blurTexture = createTexture(gl, gl.LINEAR);
+      blurFramebuffer = gl.createFramebuffer();
+      targetWidth = 0;
+      targetHeight = 0;
+      videoTextureWidth = 0;
+      videoTextureHeight = 0;
+      captureWidth = 0;
+      captureHeight = 0;
+      layoutDirty = true;
+      glReady = true;
+    }
+    function releaseGlResources() {
+      glReady = false;
+      if (gl) {
+        if (captureProgram) gl.deleteProgram(captureProgram);
+        if (compositeProgram) gl.deleteProgram(compositeProgram);
+        if (blurProgram) gl.deleteProgram(blurProgram);
+        if (quadBuffer) gl.deleteBuffer(quadBuffer);
+        if (quadVao) gl.deleteVertexArray(quadVao);
+        if (videoTexture) gl.deleteTexture(videoTexture);
+        if (captureTexture) gl.deleteTexture(captureTexture);
+        if (captureFramebuffer) gl.deleteFramebuffer(captureFramebuffer);
+        if (sceneTexture) gl.deleteTexture(sceneTexture);
+        if (sceneFramebuffer) gl.deleteFramebuffer(sceneFramebuffer);
+        if (blurTexture) gl.deleteTexture(blurTexture);
+        if (blurFramebuffer) gl.deleteFramebuffer(blurFramebuffer);
+      }
+      captureProgram = null;
+      captureUniforms = null;
+      compositeProgram = null;
+      compositeUniforms = null;
+      quadVao = null;
+      quadBuffer = null;
+      videoTexture = null;
+      captureTexture = null;
+      captureFramebuffer = null;
+      videoTextureWidth = 0;
+      videoTextureHeight = 0;
+      captureWidth = 0;
+      captureHeight = 0;
+      blurProgram = null;
+      blurUniforms = null;
+      sceneTexture = null;
+      sceneFramebuffer = null;
+      blurTexture = null;
+      blurFramebuffer = null;
+      targetWidth = 0;
+      targetHeight = 0;
+    }
+    function onContextLost(event) {
+      event.preventDefault();
+      glReady = false;
+    }
+    function onContextRestored() {
+      if (!canvas || !gl) return;
+      try {
+        buildGlResources();
+        applySizes();
+        if (running) drawFrame(now());
+      } catch (error) {
+        handleDrawError(error);
+      }
+    }
+    function setupGl() {
+      gl = canvas.getContext("webgl2", {
+        alpha: false,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        preserveDrawingBuffer: false
+      });
+      if (!gl) {
+        if (!warnedNoGl) {
+          warnedNoGl = true;
+          logger.warn("[yt-ambient] WebGL2 is not available, so the ambient light is disabled.");
+        }
+        return false;
+      }
+      glAbort = new AbortController();
+      const options = { signal: glAbort.signal };
+      canvas.addEventListener("webglcontextlost", onContextLost, options);
+      canvas.addEventListener("webglcontextrestored", onContextRestored, options);
+      try {
+        buildGlResources();
+      } catch (error) {
+        logger.warn("[yt-ambient] Failed to set up WebGL resources.", error);
+        releaseGlResources();
+        return false;
+      }
+      return true;
+    }
     function applySizes() {
       if (!layout || !layout.valid) return false;
       let changed = false;
       const { captureSize, canvasPx } = layout;
-      if (captureCanvas && (captureCanvas.width !== captureSize.width || captureCanvas.height !== captureSize.height)) {
-        captureCanvas.width = captureSize.width;
-        captureCanvas.height = captureSize.height;
+      if (glReady && (captureWidth !== captureSize.width || captureHeight !== captureSize.height)) {
+        allocateCapture(captureSize.width, captureSize.height);
+        changed = true;
+      }
+      if (glReady && (targetWidth !== canvasPx.width || targetHeight !== canvasPx.height)) {
+        allocateTargets(canvasPx.width, canvasPx.height);
         changed = true;
       }
       if (canvas && (canvas.width !== canvasPx.width || canvas.height !== canvasPx.height)) {
@@ -800,49 +1157,117 @@
       if (errorCount < Math.max(1, config.drmErrorLimit || 1)) return;
       halted = true;
       stop();
-      logger.debug("[yt-ambient] drawImage\uAC00 \uC5F0\uC18D \uC2E4\uD328\uD574 \uB80C\uB354\uB9C1\uC744 \uC911\uB2E8\uD588\uC2B5\uB2C8\uB2E4.", error);
+      logger.debug("[yt-ambient] Rendering stopped after consecutive draw failures.", error);
     }
-    function buildFeatherGradient(gradient, feather) {
-      gradient.addColorStop(0, "rgba(0,0,0,0)");
-      gradient.addColorStop(feather, "rgba(0,0,0,1)");
-      gradient.addColorStop(1 - feather, "rgba(0,0,0,1)");
-      gradient.addColorStop(1, "rgba(0,0,0,0)");
-      return gradient;
+    function uploadVideoFrame() {
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+      if (video.readyState < MIN_READY_STATE || !(width > 0) || !(height > 0)) return false;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+      if (width !== videoTextureWidth || height !== videoTextureHeight) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+        videoTextureWidth = width;
+        videoTextureHeight = height;
+      } else {
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, video);
+      }
+      return true;
     }
-    function applyFeather() {
-      const { width, height } = captureCanvas;
-      const { crop } = layout;
-      const featherX = Math.min(0.5, Number(layout.feather && layout.feather.x) || 0);
-      const featherY = Math.min(0.5, Number(layout.feather && layout.feather.y) || 0);
-      if (featherX <= 0 && featherY <= 0) return;
-      const key = `${width}x${height}x${featherX}x${featherY}x${crop.sx}x${crop.sy}x${crop.sw}x${crop.sh}`;
-      if (key !== featherKey) {
-        featherKey = key;
-        featherH = featherX > 0 ? buildFeatherGradient(captureCtx.createLinearGradient(crop.sx, 0, crop.sx + crop.sw, 0), featherX) : null;
-        featherV = featherY > 0 ? buildFeatherGradient(captureCtx.createLinearGradient(0, crop.sy, 0, crop.sy + crop.sh), featherY) : null;
+    function renderCapture() {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, captureFramebuffer);
+      gl.viewport(0, 0, captureWidth, captureHeight);
+      gl.disable(gl.BLEND);
+      gl.useProgram(captureProgram);
+      gl.bindVertexArray(quadVao);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+      gl.uniform1i(captureUniforms.tex, 0);
+      gl.uniform4f(captureUniforms.rect, -1, -1, 2, 2);
+      gl.uniform4f(captureUniforms.uv, 0, 0, 1, 1);
+      gl.uniform2f(captureUniforms.footprint, 1 / captureWidth, 1 / captureHeight);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    function uploadLayoutUniforms() {
+      const { crop, captureSize, feather, draws } = layout;
+      const u = compositeUniforms;
+      layerCount = Math.min(MAX_LAYERS, draws.length);
+      for (let i = 0; i < layerCount; i += 1) {
+        const d = draws[i];
+        layerBoxes[i * 4] = d.dx;
+        layerBoxes[i * 4 + 1] = d.dy;
+        layerBoxes[i * 4 + 2] = d.dw;
+        layerBoxes[i * 4 + 3] = d.dh;
       }
-      captureCtx.globalCompositeOperation = "destination-in";
-      if (featherH) {
-        captureCtx.fillStyle = featherH;
-        captureCtx.fillRect(crop.sx, crop.sy, crop.sw, crop.sh);
-      }
-      if (featherV) {
-        captureCtx.fillStyle = featherV;
-        captureCtx.fillRect(crop.sx, crop.sy, crop.sw, crop.sh);
-      }
-      captureCtx.globalCompositeOperation = "source-over";
+      if (layerCount > 0) gl.uniform4fv(u.boxes, layerBoxes.subarray(0, layerCount * 4));
+      gl.uniform1i(u.layerCount, layerCount);
+      gl.uniform2f(u.canvasSize, canvas.width, canvas.height);
+      const halfTexelX = 0.5 / captureSize.width;
+      const halfTexelY = 0.5 / captureSize.height;
+      gl.uniform4f(
+        u.crop,
+        crop.sx / captureSize.width + halfTexelX,
+        crop.sy / captureSize.height + halfTexelY,
+        crop.sw / captureSize.width - halfTexelX * 2,
+        crop.sh / captureSize.height - halfTexelY * 2
+      );
+      gl.uniform2f(
+        u.feather,
+        Math.min(0.5, Number(feather && feather.x) || 0),
+        Math.min(0.5, Number(feather && feather.y) || 0)
+      );
+      const fanDeg = Math.min(MAX_FAN_ANGLE_DEG, Math.max(0, Number(config.fanAngleDeg) || 0));
+      gl.uniform1f(u.fanAngle, fanDeg * Math.PI / 180);
+      layoutDirty = false;
+    }
+    function renderLayers() {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.disable(gl.BLEND);
+      gl.useProgram(compositeProgram);
+      gl.bindVertexArray(quadVao);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, captureTexture);
+      gl.uniform1i(compositeUniforms.tex, 0);
+      gl.uniform4f(compositeUniforms.rect, -1, -1, 2, 2);
+      gl.uniform4f(compositeUniforms.uv, 0, 0, 1, 1);
+      if (layoutDirty) uploadLayoutUniforms();
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    function renderBlur() {
+      const { canvasBox, canvasPx } = layout;
+      const blurCssPx = Math.max(0, Number(config.blurPx) || 0);
+      const sigma = blurCssPx * (canvasPx.width / canvasBox.width);
+      const saturate = Number.isFinite(config.saturate) ? config.saturate : 1;
+      const u = blurUniforms;
+      gl.useProgram(blurProgram);
+      gl.bindVertexArray(quadVao);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform1i(u.tex, 0);
+      gl.uniform4f(u.uv, 0, 0, 1, 1);
+      gl.uniform1f(u.sigma, sigma);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, blurFramebuffer);
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
+      gl.uniform4f(u.rect, -1, -1, 2, 2);
+      gl.uniform2f(u.step, 1 / canvas.width, 0);
+      gl.uniform1f(u.saturate, 1);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindTexture(gl.TEXTURE_2D, blurTexture);
+      gl.uniform4f(u.rect, -1, 1, 2, -2);
+      gl.uniform2f(u.step, 0, 1 / canvas.height);
+      gl.uniform1f(u.saturate, saturate);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
     function drawFrame(stamp) {
-      if (!video || !canvas || !ctx || !captureCtx || halted) return;
+      if (!video || !canvas || !gl || !glReady || halted) return;
       if (!layout || !layout.valid) return;
       try {
-        captureCtx.drawImage(video, 0, 0, captureCanvas.width, captureCanvas.height);
-        applyFeather();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const { crop } = layout;
-        for (const d of layout.draws) {
-          ctx.drawImage(captureCanvas, crop.sx, crop.sy, crop.sw, crop.sh, d.dx, d.dy, d.dw, d.dh);
-        }
+        if (!uploadVideoFrame()) return;
+        renderCapture();
+        renderLayers();
+        renderBlur();
         errorCount = 0;
         lastDrawMs = stamp;
         sampleBars(stamp);
@@ -873,11 +1298,7 @@
       detach();
       video = nextVideo;
       canvas = nextCanvas;
-      ctx = canvas.getContext("2d", { alpha: false });
-      if (!captureCanvas) {
-        captureCanvas = createCanvas();
-        captureCtx = captureCanvas.getContext("2d");
-      }
+      setupGl();
       halted = false;
       errorCount = 0;
       lastDrawMs = 0;
@@ -886,15 +1307,16 @@
     }
     function setLayout(nextLayout) {
       layout = nextLayout || null;
+      layoutDirty = true;
       applySizes();
       if (running) drawFrame(now());
     }
     function start() {
-      if (running || halted || !video || !canvas) return;
+      if (running || halted || !video || !canvas || !gl) return;
       if (typeof video.requestVideoFrameCallback !== "function") {
         if (!warnedNoRvfc) {
           warnedNoRvfc = true;
-          logger.warn("[yt-ambient] \uC774 \uBE0C\uB77C\uC6B0\uC800\uB294 requestVideoFrameCallback\uC744 \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC544 \uB3D9\uC791\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
+          logger.warn("[yt-ambient] requestVideoFrameCallback is not supported, so the ambient light is disabled.");
         }
         return;
       }
@@ -921,14 +1343,17 @@
     function detach() {
       stop();
       releaseBarStrip();
+      if (glAbort) {
+        glAbort.abort();
+        glAbort = null;
+      }
+      releaseGlResources();
+      gl = null;
       video = null;
       canvas = null;
-      ctx = null;
     }
     function destroy() {
       detach();
-      captureCanvas = null;
-      captureCtx = null;
       layout = null;
     }
     function onBarsChange(listener) {
@@ -937,7 +1362,7 @@
     return { attach, setLayout, start, stop, detach, destroy, onBarsChange };
   }
 
-  // src/main.js
+  // scripts/main.js
   function boot() {
     if (window.__ytAmbientBooted) return;
     window.__ytAmbientBooted = true;
