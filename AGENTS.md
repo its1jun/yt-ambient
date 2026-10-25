@@ -10,9 +10,9 @@
 ## 2. Project Context
 
 - The user is a non-developer doing vibe coding. Do not assume programming background.
-- If `architecture.txt` (or a similar project doc) exists, read it first and follow it. Its project-specific rules take priority over Section 6 where they differ.
+- If `docs/ARCHITECTURE.md` (or a similar project doc) exists, read it first and follow it. Its project-specific rules take priority over Section 6 where they differ.
 - Do not guess about code you have not seen. If a file is needed, ask the user to paste it.
-- If a change makes `architecture.txt` outdated, tell the user which line to update.
+- If a change makes `docs/ARCHITECTURE.md` outdated, tell the user which line to update.
 
 ## 3. Comments
 
@@ -38,7 +38,7 @@
 
 ## 6. Project Conventions (reusable across projects)
 
-Before applying these rules, identify the project's actual files and folders (check `architecture.txt` or the existing structure). Use their real names. If a role below has no matching file yet, ask the user before creating one.
+Before applying these rules, identify the project's actual files and folders (check `docs/ARCHITECTURE.md` or the existing structure). Use their real names. If a role below has no matching file yet, ask the user before creating one.
 
 - **Global stylesheet**: the CSS file that holds `:root` variables shared by the whole site (often `base.css`).
 - **Entry page**: the main HTML file that loads the CSS/JS files (often `index.html`).
@@ -93,7 +93,7 @@ function functionName() {
 
 ## 8. Workflow
 
-1. Read `architecture.txt` and understand the existing logic related to the request.
+1. Read `docs/ARCHITECTURE.md` and understand the existing logic related to the request.
 2. For a bug, identify the underlying cause first.
 3. Find existing patterns and reusable parts in the project.
 4. Choose the smallest change that properly solves the problem. Ask for approval if it is structural (Section 5).

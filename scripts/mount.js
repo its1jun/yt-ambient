@@ -23,7 +23,7 @@ export function createMount({ config, env = {} }) {
   }
 
   // 검은 띠를 영상에서 잘라내는 CSS 변수를 <html>에 쓴다 (띠가 없으면 변수를 지운다)
-  // clipVar = "위아래% 좌우%", clipVar-x = 좌우 띠 크기(%), clipVar-y = 위아래 띠 크기(%) (가장자리 페더링이 잘린 영역 기준이 되도록 쓴다)
+  // clipVar-x = 좌우 띠 크기(%), clipVar-y = 위아래 띠 크기(%). clip-path와 가장자리 페더링이 둘 다 이 두 변수를 읽는다
   // 같은 값이면 다시 쓰지 않는다
   function applyClip(bars) {
     const x = bars ? bars.x : 0;
@@ -33,11 +33,9 @@ export function createMount({ config, env = {} }) {
     const rootStyle = doc.documentElement.style;
     const clipVar = config.bars.clipVar;
     if (inset) {
-      rootStyle.setProperty(clipVar, inset);
       rootStyle.setProperty(`${clipVar}-x`, `${+x.toFixed(3)}%`);
       rootStyle.setProperty(`${clipVar}-y`, `${+y.toFixed(3)}%`);
     } else {
-      rootStyle.removeProperty(clipVar);
       rootStyle.removeProperty(`${clipVar}-x`);
       rootStyle.removeProperty(`${clipVar}-y`);
     }
@@ -113,7 +111,6 @@ export function createMount({ config, env = {} }) {
 
   // wrapper를 지우고 참조를 모두 놓는다 (<html> 속성은 건드리지 않고, clip 변수만 지운다)
   function unmount() {
-    doc.documentElement.style.removeProperty(config.bars.clipVar);
     doc.documentElement.style.removeProperty(`${config.bars.clipVar}-x`);
     doc.documentElement.style.removeProperty(`${config.bars.clipVar}-y`);
     doc.documentElement.style.removeProperty('--video-feather');
@@ -123,9 +120,5 @@ export function createMount({ config, env = {} }) {
     applied = {};
   }
 
-  function getCanvas() {
-    return canvas;
-  }
-
-  return { mount, applyLayout, setVisible, setRootAttr, unmount, getCanvas };
+  return { mount, applyLayout, setVisible, setRootAttr, unmount };
 }

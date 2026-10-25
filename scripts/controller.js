@@ -3,8 +3,10 @@ import { deriveRunState } from './store.js';
 import { layoutEquals } from './layout.js';
 
 // 아무것도 적용하지 않은 처음 상태
+// boundVideo/boundCanvas = renderer에 연결해 둔 요소. ARMED로 가도 GPU 자원과 함께 유지되고, IDLE로 갈 때만 비운다
+// (그래서 ARMED 중에 video가 바뀌어도 video와 boundVideo는 다를 수 있다)
 function emptyApplied() {
-  return { state: 'IDLE', player: null, video: null, parent: null };
+  return { state: 'IDLE', player: null, video: null, parent: null, boundVideo: null, boundCanvas: null };
 }
 
 // 컨트롤러를 만든다. env는 테스트에서 가짜 document/rAF/ResizeObserver를 넣기 위한 선택 인자
@@ -16,7 +18,6 @@ export function createController({ adapter, store, mount, renderer, config, comp
 
   let started = false;
   let applied = emptyApplied();   // 지금 실제로 적용된 상태 (reconcile이 같은 입력이면 아무것도 안 하게 하는 기준)
-  let bound = { video: null, canvas: null };  // renderer에 연결해 둔 요소
   let resizeObserver = null;
   let bars = { x: 0, y: 0 };   // 렌더러가 확정한 검은 띠 크기 (영상 대비 한쪽 %, 0이면 띠 없음)
   let rafId = null;
@@ -86,7 +87,6 @@ export function createController({ adapter, store, mount, renderer, config, comp
   function enterIdle() {
     if (applied.state === 'RUNNING') leaveRunning();
     renderer.detach();
-    bound = { video: null, canvas: null };
     mount.unmount();
     lastLayout = null;
     applied = emptyApplied();
@@ -96,7 +96,7 @@ export function createController({ adapter, store, mount, renderer, config, comp
   function enterArmed(s) {
     if (applied.state === 'RUNNING') leaveRunning();
     mount.setVisible(false);
-    applied = { state: 'ARMED', player: s.player, video: s.video, parent: s.mountParent };
+    applied = { ...applied, state: 'ARMED', player: s.player, video: s.video, parent: s.mountParent };
   }
 
   // → RUNNING (또는 RUNNING 중 요소 참조가 바뀐 경우의 재연결)
@@ -105,11 +105,8 @@ export function createController({ adapter, store, mount, renderer, config, comp
     const { canvas } = mount.mount(s.mountParent);
 
     // 영상이나 canvas가 바뀐 경우에만 renderer를 새로 연결한다 (attach는 내부에서 stop도 한다)
-    if (bound.video !== s.video || bound.canvas !== canvas) {
-      renderer.attach(s.video, canvas);
-      bound = { video: s.video, canvas };
-    }
-    applied = { state: 'RUNNING', player: s.player, video: s.video, parent: s.mountParent };
+    if (applied.boundVideo !== s.video || applied.boundCanvas !== canvas) renderer.attach(s.video, canvas);
+    applied = { state: 'RUNNING', player: s.player, video: s.video, parent: s.mountParent, boundVideo: s.video, boundCanvas: canvas };
 
     // WebGL을 얻지 못했으면 앰비언트를 켜지 않는다 (<html> 속성이 없으면 영상 페더링 등 화면 변경도 적용되지 않는다)
     if (!renderer.hasGl()) {

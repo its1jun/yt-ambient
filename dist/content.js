@@ -15,6 +15,8 @@
     // 영상 샘플링 canvas의 긴 변 (px)
     canvasLongSide: 288,
     // 앰비언트 canvas 내부 해상도의 긴 변 (px)
+    maxLayers: 40,
+    // 한 번에 합성할 수 있는 층 수의 상한. 영상이 비정상적으로 작을 때 그리기가 폭주하는 것을 막고, 셰이더의 층 배열 크기도 이 값으로 정해진다
     fanAngleDeg: 15,
     // 부채꼴 한쪽 각도 (도, 0~60). 층의 색을 중심에서 이 각도 안으로 퍼뜨려 평균내어 방사형 줄무늬를 흐린다. 0이면 끔(기존 모습). 클수록 넓게 퍼진다
     // 앰비언트 실행을 허용할 화면 모드 
@@ -59,7 +61,7 @@
       stableTolerance: 0.5,
       // 같은 값으로 볼 오차 (%p)
       clipVar: "--ambient-clip-inset"
-      // <html>에 넣는 CSS 변수 이름 (styles/ambient.css의 이름과 같아야 한다)
+      // <html>에 넣는 CSS 변수 이름의 앞부분. 실제로는 뒤에 -x, -y가 붙은 두 변수를 쓴다 (styles/ambient.css의 이름과 같아야 한다)
     }
   });
 
@@ -130,7 +132,6 @@
 
   // scripts/layout.js
   var EPSILON = 0.01;
-  var MAX_LAYER_COUNT = 40;
   var MAX_BAR_PERCENT = 49;
   var INVALID_LAYOUT = Object.freeze({
     valid: false,
@@ -169,9 +170,9 @@
       playerRect.top + playerRect.height - (videoRect.top + videoRect.height)
     );
   }
-  function computeLayerCount(playerRect, videoRect, layerGapPx) {
+  function computeLayerCount(playerRect, videoRect, layerGapPx, maxLayers) {
     const needed = Math.ceil(computeFarthestGap(playerRect, videoRect) / layerGapPx - 1e-4);
-    return Math.min(MAX_LAYER_COUNT, Math.max(1, needed) + 1);
+    return Math.min(maxLayers, Math.max(1, needed) + 1);
   }
   function computeFeather(videoRect, layerGapPx) {
     if (!isPositiveNumber(layerGapPx)) return { x: 0, y: 0 };
@@ -181,11 +182,11 @@
     };
   }
   function computeLayout({ playerRect, videoRect, parentRect, bars, config }) {
-    const { layerGapPx, captureLongSide, canvasLongSide } = config || {};
+    const { layerGapPx, captureLongSide, canvasLongSide, maxLayers } = config || {};
     if (!isSizedRect(playerRect) || !isSizedRect(videoRect) || !isPositionedRect(parentRect)) {
       return INVALID_LAYOUT;
     }
-    if (!isPositiveNumber(layerGapPx) || !isPositiveNumber(captureLongSide) || !isPositiveNumber(canvasLongSide)) {
+    if (!isPositiveNumber(layerGapPx) || !isPositiveNumber(captureLongSide) || !isPositiveNumber(canvasLongSide) || !isPositiveNumber(maxLayers)) {
       return INVALID_LAYOUT;
     }
     const wrapperBox = {
@@ -205,7 +206,7 @@
     if (!isSizedRect(contentRect)) return INVALID_LAYOUT;
     const videoLeft = contentRect.left - playerRect.left;
     const videoTop = contentRect.top - playerRect.top;
-    const count = computeLayerCount(playerRect, contentRect, layerGapPx);
+    const count = computeLayerCount(playerRect, contentRect, layerGapPx, maxLayers);
     const layerBoxes = [];
     for (let i = count; i >= 1; i -= 1) {
       const grow = layerGapPx * i;
@@ -295,7 +296,7 @@
 
   // scripts/controller.js
   function emptyApplied() {
-    return { state: "IDLE", player: null, video: null, parent: null };
+    return { state: "IDLE", player: null, video: null, parent: null, boundVideo: null, boundCanvas: null };
   }
   function createController({ adapter, store, mount, renderer, config, computeLayout: computeLayout2, env = {} }) {
     const doc = env.doc || document;
@@ -304,7 +305,6 @@
     const ResizeObserverImpl = env.ResizeObserver || (typeof ResizeObserver !== "undefined" ? ResizeObserver : null);
     let started = false;
     let applied = emptyApplied();
-    let bound = { video: null, canvas: null };
     let resizeObserver = null;
     let bars = { x: 0, y: 0 };
     let rafId = null;
@@ -358,7 +358,6 @@
     function enterIdle() {
       if (applied.state === "RUNNING") leaveRunning();
       renderer.detach();
-      bound = { video: null, canvas: null };
       mount.unmount();
       lastLayout = null;
       applied = emptyApplied();
@@ -366,16 +365,13 @@
     function enterArmed(s) {
       if (applied.state === "RUNNING") leaveRunning();
       mount.setVisible(false);
-      applied = { state: "ARMED", player: s.player, video: s.video, parent: s.mountParent };
+      applied = { ...applied, state: "ARMED", player: s.player, video: s.video, parent: s.mountParent };
     }
     function enterRunning(s) {
       const parentChanged = applied.parent !== s.mountParent;
       const { canvas } = mount.mount(s.mountParent);
-      if (bound.video !== s.video || bound.canvas !== canvas) {
-        renderer.attach(s.video, canvas);
-        bound = { video: s.video, canvas };
-      }
-      applied = { state: "RUNNING", player: s.player, video: s.video, parent: s.mountParent };
+      if (applied.boundVideo !== s.video || applied.boundCanvas !== canvas) renderer.attach(s.video, canvas);
+      applied = { state: "RUNNING", player: s.player, video: s.video, parent: s.mountParent, boundVideo: s.video, boundCanvas: canvas };
       if (!renderer.hasGl()) {
         mount.setRootAttr(false);
         mount.setVisible(false);
@@ -544,10 +540,7 @@
       retryCount = 0;
       facts = INITIAL_FACTS;
     }
-    function getFacts() {
-      return facts;
-    }
-    return { start, stop, getFacts };
+    return { start, stop };
   }
 
   // scripts/mount.js
@@ -572,11 +565,9 @@
       const rootStyle = doc.documentElement.style;
       const clipVar = config.bars.clipVar;
       if (inset) {
-        rootStyle.setProperty(clipVar, inset);
         rootStyle.setProperty(`${clipVar}-x`, `${+x.toFixed(3)}%`);
         rootStyle.setProperty(`${clipVar}-y`, `${+y.toFixed(3)}%`);
       } else {
-        rootStyle.removeProperty(clipVar);
         rootStyle.removeProperty(`${clipVar}-x`);
         rootStyle.removeProperty(`${clipVar}-y`);
       }
@@ -633,7 +624,6 @@
       }
     }
     function unmount() {
-      doc.documentElement.style.removeProperty(config.bars.clipVar);
       doc.documentElement.style.removeProperty(`${config.bars.clipVar}-x`);
       doc.documentElement.style.removeProperty(`${config.bars.clipVar}-y`);
       doc.documentElement.style.removeProperty("--video-feather");
@@ -642,13 +632,10 @@
       canvas = null;
       applied = {};
     }
-    function getCanvas() {
-      return canvas;
-    }
-    return { mount, applyLayout, setVisible, setRootAttr, unmount, getCanvas };
+    return { mount, applyLayout, setVisible, setRootAttr, unmount };
   }
 
-  // scripts/bars.js
+  // scripts/letterbox.js
   function isBlackPixel(data, index, sumMax, diffMax) {
     const r = data[index];
     const g = data[index + 1];
@@ -709,15 +696,76 @@
     }
     return { push, reset };
   }
+  function createLetterboxDetector({ config, env = {} }) {
+    const createCanvas = env.createCanvas || (() => document.createElement("canvas"));
+    const barOptions = config.bars || { enabled: false };
+    const stabilizer = createBarStabilizer(barOptions);
+    let barLocked = false;
+    let barStrip = null;
+    let barStripCtx = null;
+    let lastSampleMs = 0;
+    let emittedBars = { x: 0, y: 0 };
+    let barsListener = null;
+    function ensureBarStrip(columns, rows) {
+      if (!barStrip) {
+        barStrip = createCanvas();
+        barStripCtx = barStrip.getContext("2d", { willReadFrequently: true });
+      }
+      if (barStrip.width !== columns) barStrip.width = columns;
+      if (barStrip.height !== rows) barStrip.height = rows;
+      return barStripCtx;
+    }
+    function releaseBarStrip() {
+      barStrip = null;
+      barStripCtx = null;
+    }
+    function emitBars(next) {
+      if (emittedBars.x === next.x && emittedBars.y === next.y) return;
+      emittedBars = next;
+      if (barsListener) barsListener(next);
+    }
+    function reset() {
+      stabilizer.reset();
+      barLocked = false;
+      lastSampleMs = 0;
+      emitBars({ x: 0, y: 0 });
+    }
+    function sample(video, stamp) {
+      if (!barOptions.enabled || barLocked || !video) return;
+      if (lastSampleMs > 0 && stamp - lastSampleMs < barOptions.measureIntervalMs) return;
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+      if (!(videoWidth > 0) || !(videoHeight > 0)) return;
+      lastSampleMs = stamp;
+      try {
+        const columns = Math.max(1, Math.floor(barOptions.scanColumns));
+        const rows = Math.max(1, Math.min(videoHeight, Math.floor(barOptions.stripHeight)));
+        const stripCtx = ensureBarStrip(columns, rows);
+        for (let i = 0; i < columns; i += 1) {
+          const sx = Math.min(videoWidth - 1, Math.floor(videoWidth * (i + 0.5) / columns));
+          stripCtx.drawImage(video, sx, 0, 1, videoHeight, i, 0, 1, rows);
+        }
+        const { data } = stripCtx.getImageData(0, 0, columns, rows);
+        const result = analyzeBarStrip(data, columns, rows, barOptions);
+        if (result.status !== "ok") return;
+        const locked = stabilizer.push(result.percent);
+        if (locked === null) return;
+        barLocked = true;
+        releaseBarStrip();
+        emitBars({ x: 0, y: locked });
+      } catch (error) {
+      }
+    }
+    function onChange(listener) {
+      barsListener = typeof listener === "function" ? listener : null;
+    }
+    return { sample, reset, release: releaseBarStrip, onChange };
+  }
 
-  // scripts/renderer.js
-  var FRAME_SLACK_MS = 2;
-  var MAX_LAYERS = 40;
+  // scripts/shaders.js
   var FAN_TAPS = 2;
-  var MAX_FAN_ANGLE_DEG = 60;
   var CAPTURE_TAPS = 4;
   var MAX_BLUR_RADIUS = 24;
-  var MIN_READY_STATE = 2;
   var VERTEX_SOURCE = `#version 300 es
 layout(location = 0) in vec2 a_corner;
 uniform vec4 u_rect;
@@ -746,9 +794,10 @@ void main() {
   }
   outColor = vec4(sum / float(CAPTURE_TAPS * CAPTURE_TAPS), 1.0);
 }`;
-  var COMPOSITE_FRAGMENT_SOURCE = `#version 300 es
+  function buildCompositeSource(maxLayers) {
+    return `#version 300 es
 precision highp float;
-#define MAX_LAYERS ${MAX_LAYERS}
+#define MAX_LAYERS ${maxLayers}
 #define FAN_TAPS ${FAN_TAPS}
 const float OPAQUE_LIMIT = 0.999;  // \uC313\uC778 \uBD88\uD22C\uBA85\uB3C4\uAC00 \uC774 \uAC12 \uC774\uC0C1\uC774\uBA74 \uB354 \uBC14\uAE65 \uCE35\uC740 \uBCF4\uC774\uC9C0 \uC54A\uC73C\uBBC0\uB85C \uC77D\uC9C0 \uC54A\uB294\uB2E4
 in vec2 v_local;
@@ -807,8 +856,9 @@ void main() {
     covered += (1.0 - covered) * alpha;
     if (covered >= OPAQUE_LIMIT) break;
   }
-  outColor = vec4(accum, 1.0);
+  outColor = vec4(accum, covered);
 }`;
+  }
   var BLUR_FRAGMENT_SOURCE = `#version 300 es
 precision highp float;
 #define MAX_BLUR_RADIUS ${MAX_BLUR_RADIUS}
@@ -819,7 +869,7 @@ uniform float u_sigma;
 uniform float u_saturate;
 out vec4 outColor;
 void main() {
-  vec3 sum = texture(u_tex, v_uv).rgb;
+  vec4 sum = texture(u_tex, v_uv);
   float weightSum = 1.0;
   int radius = min(MAX_BLUR_RADIUS, int(ceil(u_sigma * 3.0)));
   float falloff = u_sigma > 0.0 ? -0.5 / (u_sigma * u_sigma) : 0.0;
@@ -830,18 +880,18 @@ void main() {
     float w = w0 + w1;
     float shift = w > 0.0 ? w1 / w : 0.0;
     vec2 offset = u_step * (float(k) + shift);
-    sum += (texture(u_tex, v_uv + offset).rgb + texture(u_tex, v_uv - offset).rgb) * w;
+    sum += (texture(u_tex, v_uv + offset) + texture(u_tex, v_uv - offset)) * w;
     weightSum += 2.0 * w;
   }
-  vec3 color = sum / weightSum;
-  float gray = dot(color, vec3(0.2126, 0.7152, 0.0722));
-  outColor = vec4(mix(vec3(gray), color, u_saturate), 1.0);
+  vec4 c = sum / weightSum;
+  float gray = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+  vec3 rgb = mix(vec3(gray), c.rgb, u_saturate);
+  outColor = vec4(clamp(rgb, 0.0, c.a), c.a);
 }`;
-  function shouldDrawFrame(nowMs, lastDrawMs, maxFps) {
-    if (!Number.isFinite(maxFps) || maxFps <= 0) return true;
-    if (!Number.isFinite(lastDrawMs) || lastDrawMs <= 0) return true;
-    return nowMs - lastDrawMs >= 1e3 / maxFps - FRAME_SLACK_MS;
-  }
+
+  // scripts/gl-pipeline.js
+  var MAX_FAN_ANGLE_DEG = 60;
+  var MIN_READY_STATE = 2;
   function compileShader(gl, type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source);
@@ -878,11 +928,7 @@ void main() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return texture;
   }
-  function createRenderer({ config, env = {} }) {
-    const createCanvas = env.createCanvas || (() => document.createElement("canvas"));
-    const now = env.now || (() => performance.now());
-    const logger = env.logger || console;
-    let video = null;
+  function createGlPipeline({ config, logger, onRestored, onError }) {
     let canvas = null;
     let layout = null;
     let gl = null;
@@ -892,7 +938,8 @@ void main() {
     let captureUniforms = null;
     let compositeProgram = null;
     let compositeUniforms = null;
-    const layerBoxes = new Float32Array(MAX_LAYERS * 4);
+    const maxLayers = config.maxLayers;
+    const layerBoxes = new Float32Array(maxLayers * 4);
     let layerCount = 0;
     let layoutDirty = true;
     let quadVao = null;
@@ -912,22 +959,7 @@ void main() {
     let blurFramebuffer = null;
     let targetWidth = 0;
     let targetHeight = 0;
-    let running = false;
-    let halted = false;
-    let frameHandle = null;
-    let mediaAbort = null;
-    let errorCount = 0;
-    let lastDrawMs = 0;
-    let warnedNoRvfc = false;
     let warnedNoGl = false;
-    const barOptions = config.bars || { enabled: false };
-    const stabilizer = createBarStabilizer(barOptions);
-    let barLocked = false;
-    let barStrip = null;
-    let barStripCtx = null;
-    let lastSampleMs = 0;
-    let emittedBars = { x: 0, y: 0 };
-    let barsListener = null;
     function allocateCapture(width, height) {
       gl.bindTexture(gl.TEXTURE_2D, captureTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -956,7 +988,7 @@ void main() {
         tex: gl.getUniformLocation(captureProgram, "u_tex"),
         footprint: gl.getUniformLocation(captureProgram, "u_footprint")
       };
-      compositeProgram = createProgram(gl, VERTEX_SOURCE, COMPOSITE_FRAGMENT_SOURCE);
+      compositeProgram = createProgram(gl, VERTEX_SOURCE, buildCompositeSource(maxLayers));
       compositeUniforms = {
         rect: gl.getUniformLocation(compositeProgram, "u_rect"),
         uv: gl.getUniformLocation(compositeProgram, "u_uv"),
@@ -1048,14 +1080,16 @@ void main() {
       try {
         buildGlResources();
         applySizes();
-        if (running) drawFrame(now());
+        onRestored();
       } catch (error) {
-        handleDrawError(error);
+        onError(error);
       }
     }
-    function setupGl() {
+    function setup(nextCanvas) {
+      canvas = nextCanvas;
       gl = canvas.getContext("webgl2", {
-        alpha: false,
+        alpha: true,
+        premultipliedAlpha: true,
         antialias: false,
         depth: false,
         stencil: false,
@@ -1101,71 +1135,7 @@ void main() {
       }
       return changed;
     }
-    function ensureBarStrip(columns, rows) {
-      if (!barStrip) {
-        barStrip = createCanvas();
-        barStripCtx = barStrip.getContext("2d", { willReadFrequently: true });
-      }
-      if (barStrip.width !== columns) barStrip.width = columns;
-      if (barStrip.height !== rows) barStrip.height = rows;
-      return barStripCtx;
-    }
-    function releaseBarStrip() {
-      barStrip = null;
-      barStripCtx = null;
-    }
-    function emitBars(next) {
-      if (emittedBars.x === next.x && emittedBars.y === next.y) return;
-      emittedBars = next;
-      if (barsListener) barsListener(next);
-    }
-    function resetBars() {
-      stabilizer.reset();
-      barLocked = false;
-      lastSampleMs = 0;
-      emitBars({ x: 0, y: 0 });
-    }
-    function sampleBars(stamp) {
-      if (!barOptions.enabled || barLocked || !video) return;
-      if (lastSampleMs > 0 && stamp - lastSampleMs < barOptions.measureIntervalMs) return;
-      const videoWidth = video.videoWidth;
-      const videoHeight = video.videoHeight;
-      if (!(videoWidth > 0) || !(videoHeight > 0)) return;
-      lastSampleMs = stamp;
-      try {
-        const columns = Math.max(1, Math.floor(barOptions.scanColumns));
-        const rows = Math.max(1, Math.min(videoHeight, Math.floor(barOptions.stripHeight)));
-        const stripCtx = ensureBarStrip(columns, rows);
-        for (let i = 0; i < columns; i += 1) {
-          const sx = Math.min(videoWidth - 1, Math.floor(videoWidth * (i + 0.5) / columns));
-          stripCtx.drawImage(video, sx, 0, 1, videoHeight, i, 0, 1, rows);
-        }
-        const { data } = stripCtx.getImageData(0, 0, columns, rows);
-        const result = analyzeBarStrip(data, columns, rows, barOptions);
-        if (result.status !== "ok") return;
-        const locked = stabilizer.push(result.percent);
-        if (locked === null) return;
-        barLocked = true;
-        releaseBarStrip();
-        emitBars({ x: 0, y: locked });
-      } catch (error) {
-      }
-    }
-    function onSourceChange() {
-      resetBars();
-    }
-    function cancelFrame() {
-      if (frameHandle !== null && video) video.cancelVideoFrameCallback(frameHandle);
-      frameHandle = null;
-    }
-    function handleDrawError(error) {
-      errorCount += 1;
-      if (errorCount < Math.max(1, config.drmErrorLimit || 1)) return;
-      halted = true;
-      stop();
-      logger.debug("[yt-ambient] Rendering stopped after consecutive draw failures.", error);
-    }
-    function uploadVideoFrame() {
+    function uploadVideoFrame(video) {
       const width = video.videoWidth;
       const height = video.videoHeight;
       if (video.readyState < MIN_READY_STATE || !(width > 0) || !(height > 0)) return false;
@@ -1197,7 +1167,7 @@ void main() {
     function uploadLayoutUniforms() {
       const { crop, captureSize, feather, draws } = layout;
       const u = compositeUniforms;
-      layerCount = Math.min(MAX_LAYERS, draws.length);
+      layerCount = Math.min(maxLayers, draws.length);
       for (let i = 0; i < layerCount; i += 1) {
         const d = draws[i];
         layerBoxes[i * 4] = d.dx;
@@ -1266,17 +1236,85 @@ void main() {
       gl.uniform1f(u.saturate, saturate);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
+    function setLayout(nextLayout) {
+      layout = nextLayout || null;
+      layoutDirty = true;
+      applySizes();
+    }
+    function draw(video) {
+      if (!canvas || !gl || !glReady) return false;
+      if (!layout || !layout.valid) return false;
+      if (!uploadVideoFrame(video)) return false;
+      renderCapture();
+      renderLayers();
+      renderBlur();
+      return true;
+    }
+    function release() {
+      if (glAbort) {
+        glAbort.abort();
+        glAbort = null;
+      }
+      releaseGlResources();
+      gl = null;
+      canvas = null;
+    }
+    function hasGl() {
+      return gl !== null;
+    }
+    return { setup, setLayout, draw, release, hasGl };
+  }
+
+  // scripts/renderer.js
+  var FRAME_SLACK_MS = 2;
+  function shouldDrawFrame(nowMs, lastDrawMs, maxFps) {
+    if (!Number.isFinite(maxFps) || maxFps <= 0) return true;
+    if (!Number.isFinite(lastDrawMs) || lastDrawMs <= 0) return true;
+    return nowMs - lastDrawMs >= 1e3 / maxFps - FRAME_SLACK_MS;
+  }
+  function createRenderer({ config, env = {} }) {
+    const now = env.now || (() => performance.now());
+    const logger = env.logger || console;
+    let video = null;
+    let canvas = null;
+    let layout = null;
+    let running = false;
+    let halted = false;
+    let frameHandle = null;
+    let mediaAbort = null;
+    let errorCount = 0;
+    let lastDrawMs = 0;
+    let warnedNoRvfc = false;
+    const detector = createLetterboxDetector({ config, env });
+    const pipeline = createGlPipeline({
+      config,
+      logger,
+      onRestored: () => {
+        if (running) drawFrame(now());
+      },
+      onError: (error) => handleDrawError(error)
+    });
+    function onSourceChange() {
+      detector.reset();
+    }
+    function cancelFrame() {
+      if (frameHandle !== null && video) video.cancelVideoFrameCallback(frameHandle);
+      frameHandle = null;
+    }
+    function handleDrawError(error) {
+      errorCount += 1;
+      if (errorCount < Math.max(1, config.drmErrorLimit || 1)) return;
+      halted = true;
+      stop();
+      logger.debug("[yt-ambient] Rendering stopped after consecutive draw failures.", error);
+    }
     function drawFrame(stamp) {
-      if (!video || !canvas || !gl || !glReady || halted) return;
-      if (!layout || !layout.valid) return;
+      if (!video || !canvas || halted) return;
       try {
-        if (!uploadVideoFrame()) return;
-        renderCapture();
-        renderLayers();
-        renderBlur();
+        if (!pipeline.draw(video)) return;
         errorCount = 0;
         lastDrawMs = stamp;
-        sampleBars(stamp);
+        detector.sample(video, stamp);
       } catch (error) {
         handleDrawError(error);
       }
@@ -1304,21 +1342,20 @@ void main() {
       detach();
       video = nextVideo;
       canvas = nextCanvas;
-      setupGl();
+      pipeline.setup(canvas);
       halted = false;
       errorCount = 0;
       lastDrawMs = 0;
-      resetBars();
-      applySizes();
+      detector.reset();
+      pipeline.setLayout(layout);
     }
     function setLayout(nextLayout) {
       layout = nextLayout || null;
-      layoutDirty = true;
-      applySizes();
+      pipeline.setLayout(layout);
       if (running) drawFrame(now());
     }
     function start() {
-      if (running || halted || !video || !canvas || !gl) return;
+      if (running || halted || !video || !canvas || !pipeline.hasGl()) return;
       if (typeof video.requestVideoFrameCallback !== "function") {
         if (!warnedNoRvfc) {
           warnedNoRvfc = true;
@@ -1334,7 +1371,7 @@ void main() {
       video.addEventListener("seeked", onSeeked, options);
       video.addEventListener("loadstart", onSourceChange, options);
       video.addEventListener("emptied", onSourceChange, options);
-      resetBars();
+      detector.reset();
       drawFrame(now());
       scheduleFrame();
     }
@@ -1348,25 +1385,21 @@ void main() {
     }
     function detach() {
       stop();
-      releaseBarStrip();
-      if (glAbort) {
-        glAbort.abort();
-        glAbort = null;
-      }
-      releaseGlResources();
-      gl = null;
+      detector.release();
+      pipeline.release();
       video = null;
       canvas = null;
     }
     function hasGl() {
-      return gl !== null;
+      return pipeline.hasGl();
     }
     function destroy() {
       detach();
       layout = null;
+      pipeline.setLayout(null);
     }
     function onBarsChange(listener) {
-      barsListener = typeof listener === "function" ? listener : null;
+      detector.onChange(listener);
     }
     return { attach, setLayout, start, stop, detach, destroy, onBarsChange, hasGl };
   }

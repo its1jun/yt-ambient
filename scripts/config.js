@@ -8,6 +8,7 @@ export const CONFIG = Object.freeze({
   layerGapPx: 48,          // 층 하나가 사방으로 넓어지는 폭 (CSS px). 계단 한 칸의 실제 폭. 작을수록 층이 늘어 비용 증가 (권장 24~64)
   captureLongSide: 192,    // 영상 샘플링 canvas의 긴 변 (px)
   canvasLongSide: 288,     // 앰비언트 canvas 내부 해상도의 긴 변 (px)
+  maxLayers: 40,           // 한 번에 합성할 수 있는 층 수의 상한. 영상이 비정상적으로 작을 때 그리기가 폭주하는 것을 막고, 셰이더의 층 배열 크기도 이 값으로 정해진다
   fanAngleDeg: 15,         // 부채꼴 한쪽 각도 (도, 0~60). 층의 색을 중심에서 이 각도 안으로 퍼뜨려 평균내어 방사형 줄무늬를 흐린다. 0이면 끔(기존 모습). 클수록 넓게 퍼진다
 
   // 앰비언트 실행을 허용할 화면 모드 
@@ -36,6 +37,6 @@ export const CONFIG = Object.freeze({
     measureIntervalMs: 300,  // 측정 간격 (ms)
     stableCount: 3,          // 같은 값이 연속 몇 번 나오면 확정할지
     stableTolerance: 0.5,    // 같은 값으로 볼 오차 (%p)
-    clipVar: '--ambient-clip-inset',  // <html>에 넣는 CSS 변수 이름 (styles/ambient.css의 이름과 같아야 한다)
+    clipVar: '--ambient-clip-inset',  // <html>에 넣는 CSS 변수 이름의 앞부분. 실제로는 뒤에 -x, -y가 붙은 두 변수를 쓴다 (styles/ambient.css의 이름과 같아야 한다)
   }
 });

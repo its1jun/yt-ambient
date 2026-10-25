@@ -20,13 +20,15 @@ html[data-yt-ambient="on"] body::-webkit-scrollbar {
   display: none !important;
 }
 
-/* 검출된 검은 띠(레터박스)를 영상에서 잘라낸다. 변수는 mount.js가 <html>에 넣는다 (변수가 없으면 clip-path도 없다) */
+/* 검출된 검은 띠(레터박스)를 영상에서 잘라낸다. --ambient-clip-inset-y(위아래), -x(좌우)는 mount.js가 <html>에 넣는다 */
+/* 일부러 대체값(0%)을 두지 않는다: 띠가 없어서 변수가 없으면 이 선언이 무효가 되어 clip-path가 아예 적용되지 않는다 */
+/* 변수 이름은 mount.js에서 config.bars.clipVar 뒤에 붙는 -x/-y와 같아야 한다 */
 html[data-yt-ambient="on"] .html5-main-video {
-  clip-path: inset(var(--ambient-clip-inset));
+  clip-path: inset(var(--ambient-clip-inset-y) var(--ambient-clip-inset-x));
 }
 
 /* 앰비언트가 켜진 동안 원본 영상의 상하좌우 가장자리를 부드럽게 투명화한다 */
-/* 잘라낸 검은 띠(--ambient-clip-inset-x/-y, 띠가 없으면 0%)만큼 페더링 시작 위치를 안쪽으로 옮긴다. 변수 이름은 mount.js에서 clipVar 뒤에 붙는 -x/-y와 같아야 한다 */
+/* 잘라낸 검은 띠(--ambient-clip-inset-x/-y, 띠가 없으면 0%)만큼 페더링 시작 위치를 안쪽으로 옮긴다 */
 html[data-yt-ambient="on"] .html5-main-video {
   --clip-x: var(--ambient-clip-inset-x, 0%);
   --clip-y: var(--ambient-clip-inset-y, 0%);

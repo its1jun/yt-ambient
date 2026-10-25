@@ -6,7 +6,7 @@
 | ID | 질문 | 상태 | 근거 / 날짜 | 영향받는 곳 |
 |---|---|---|---|---|
 | V1 | 전체화면일 때 `document.fullscreenElement`는 무엇이며, `#content.ytd-app` 안의 앰비언트가 보이는가 | Unverified | | adapter의 `mountParent` (Phase 3, 5) |
-| V2 | DRM 영상에서 `drawImage`가 예외인가, 검은 프레임인가 | Unverified | | renderer DRM 가드 (Phase 4) |
+| V2 | DRM 영상에서 `drawImage`가 예외인가, 검은 프레임인가 | Unverified | | renderer DRM 가드 (`renderer.js`, `gl-pipeline.js`), 띠 측정 (`letterbox.js`) |
 | V3 | 레거시가 유휴 상태에서 매초 레이아웃을 일으키는가 | Unverified | | 기준선 해석 |
 | V4 | `scroll` 리스너가 필요한가 | Unverified | | controller (Phase 5) |
 | V5 | `#movie_player`가 있는가 / 문서 전역 `.html5-video-player`가 여러 개인가 | Unverified | | `SEL.player` (Phase 1, 3) |
@@ -100,6 +100,8 @@ document.querySelector('ytd-watch-flexy, ytd-watch-fixie, ytd-watch-grid')?.tagN
 | `.ytSearchboxComponentSearchButtonDark` | 외형 보정(추정) | Unverified | |
 | `#search-icon-legacy` | 외형 보정(추정) | Unverified | |
 | `#container.ytd-searchbox` | 외형 보정(추정) | Unverified | |
+| `#voice-search-button` | 외형 보정(추정) | Unverified | |
+| `.ytSpecButtonShapeNextHost` | 외형 보정(추정) | Unverified | |
 | `ytd-playlist-panel-renderer` | 외형 보정(추정) | Unverified | |
 | `ytd-playlist-panel-renderer #container` | 외형 보정(추정) | Unverified | |
 | `ytd-playlist-panel-renderer .header` | 외형 보정(추정) | Unverified | |

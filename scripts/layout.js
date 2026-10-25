@@ -1,7 +1,6 @@
 // 앰비언트 배치 계산 모듈 (순수 함수: 화면 요소에 접근하지 않고 숫자만 계산한다)
 
 const EPSILON = 0.01;        // layoutEquals에서 같은 값으로 취급할 오차 (px)
-const MAX_LAYER_COUNT = 40;  // 영상이 비정상적으로 작을 때 그리기 횟수가 폭주하는 것을 막는 안전 상한
 const MAX_BAR_PERCENT = 49;  // 한쪽 띠 크기의 상한 (%). 양쪽 합이 100%를 넘어 영역이 사라지는 것을 막는 안전 장치
 
 // 비어 있음을 나타내는 결과 (valid가 false이면 나머지 값은 의미 없음)
@@ -58,18 +57,10 @@ function computeFarthestGap(playerRect, videoRect) {
   );
 }
 
-// 영상이 플레이어를 빈틈없이 덮고 있는지 확인 (빈 곳이 tolerancePx 이하이면 true, 단위: px)
-// 덮고 있으면 앰비언트는 영상 뒤에 가려져 보이지 않는다
-export function isPlayerCovered(playerRect, videoRect, tolerancePx) {
-  if (!isSizedRect(playerRect) || !isSizedRect(videoRect)) return false;
-  const tolerance = Number.isFinite(tolerancePx) ? tolerancePx : 0;
-  return computeFarthestGap(playerRect, videoRect) <= tolerance;
-}
-
-// 플레이어를 덮는 데 필요한 층 개수 계산 (1 ~ MAX_LAYER_COUNT)
-function computeLayerCount(playerRect, videoRect, layerGapPx) {
+// 플레이어를 덮는 데 필요한 층 개수 계산 (1 ~ maxLayers)
+function computeLayerCount(playerRect, videoRect, layerGapPx, maxLayers) {
   const needed = Math.ceil(computeFarthestGap(playerRect, videoRect) / layerGapPx - 0.0001);
-  return Math.min(MAX_LAYER_COUNT, Math.max(1, needed) + 1);
+  return Math.min(maxLayers, Math.max(1, needed) + 1);
 }
 
 // 가장자리 투명 폭(px)을 영상 크기 대비 비율로 바꾼다 (0 ~ 0.5, 한쪽 가장자리 기준)
@@ -88,11 +79,11 @@ function computeFeather(videoRect, layerGapPx) {
 // 반환: wrapperBox(부모 기준), canvasBox(wrapper 기준), canvasPx, captureSize, feather(가장자리 투명 비율),
 //       crop(capture 이미지에서 띠를 뺀 영역, px), bars(정리된 띠 크기, %), draws(바깥층부터)
 export function computeLayout({ playerRect, videoRect, parentRect, bars, config }) {
-  const { layerGapPx, captureLongSide, canvasLongSide } = config || {};
+  const { layerGapPx, captureLongSide, canvasLongSide, maxLayers } = config || {};
   if (!isSizedRect(playerRect) || !isSizedRect(videoRect) || !isPositionedRect(parentRect)) {
     return INVALID_LAYOUT;
   }
-  if (!isPositiveNumber(layerGapPx) || !isPositiveNumber(captureLongSide) || !isPositiveNumber(canvasLongSide)) {
+  if (!isPositiveNumber(layerGapPx) || !isPositiveNumber(captureLongSide) || !isPositiveNumber(canvasLongSide) || !isPositiveNumber(maxLayers)) {
     return INVALID_LAYOUT;
   }
 
@@ -120,7 +111,7 @@ export function computeLayout({ playerRect, videoRect, parentRect, bars, config 
   const videoTop = contentRect.top - playerRect.top;
 
   // i번째 층 = 띠를 뺀 영역을 사방으로 (layerGapPx * i) px씩 넓힌 박스 (바깥층이 먼저 오도록 큰 i부터)
-  const count = computeLayerCount(playerRect, contentRect, layerGapPx);
+  const count = computeLayerCount(playerRect, contentRect, layerGapPx, maxLayers);
   const layerBoxes = [];
   for (let i = count; i >= 1; i -= 1) {
     const grow = layerGapPx * i;

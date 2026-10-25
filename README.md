@@ -6,8 +6,7 @@ YouTube 시청 페이지의 극장/전체화면에서 영상 뒤에 흐린 앰�
 
 ```text
 npm install
-npm run build   # src/ → dist/content.js
-npm test        # node --test
+npm run build   # scripts/ → dist/content.js
 ```
 
 구조와 계약은 `docs/ARCHITECTURE.md`를 본다.
@@ -19,8 +18,8 @@ npm test        # node --test
 
 ## 배포용 zip
 
-`npm run build` 후 **`manifest.json`**, **`dist/`**, **`src/styles/`** 만 담는다.
+`npm run build` 후 **`manifest.json`**, **`dist/`**, **`styles/`** 만 담는다.
 
 ```text
-zip -r ambient-light.zip manifest.json dist src/styles
+zip -r ambient-light.zip manifest.json dist styles
 ```

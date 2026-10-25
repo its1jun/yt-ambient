@@ -140,10 +140,5 @@ export function createAdapter({ onChange, config, selectors, env = {} }) {
     facts = INITIAL_FACTS;
   }
 
-  // 마지막으로 읽은 사실을 돌려준다
-  function getFacts() {
-    return facts;
-  }
-
-  return { start, stop, getFacts };
+  return { start, stop };
 }
