@@ -1,0 +1,68 @@
+/* YouTube 오버라이드: 앰비언트가 켜졌을 때(<html data-yt-ambient="on">)만 적용한다.
+   - 속성 이름은 scripts/config.js의 rootAttr와 같아야 한다.
+   - 담당은 "투명화/숨김"뿐이다. 레이아웃을 바꾸는 규칙은 넣지 않는다.
+   - 선택자별 필요 여부는 사람이 확인한다 (docs/VERIFICATION.md V8). 아래 분류는 추정(Uncertain)이다. */
+
+/* ===== 필수: 앰비언트를 가리는 배경/스태킹 ===== */
+html[data-yt-ambient="on"] ytd-app {
+  z-index: 0 !important;
+}
+html[data-yt-ambient="on"] #content.ytd-app {
+  position: relative;
+  z-index: 0;
+}
+
+/* 배경 투명화. 아래 선택자 목록은 두 묶음이며, 같은 선언을 한 번만 쓰기 위해 하나의 규칙으로 합쳤다 (선택자별 필요 여부는 V8) */
+/* --- 묶음 1: 필수(추정). 앰비언트를 가리는 배경 --- */
+html[data-yt-ambient="on"] #player-theater-container,
+html[data-yt-ambient="on"] #player-wide-container,
+html[data-yt-ambient="on"] #full-bleed-container,
+html[data-yt-ambient="on"] #player-full-bleed-container,
+html[data-yt-ambient="on"] #player,
+html[data-yt-ambient="on"] #player-container,
+html[data-yt-ambient="on"] #ytd-player,
+html[data-yt-ambient="on"] .html5-video-player,
+html[data-yt-ambient="on"] .html5-video-container,
+html[data-yt-ambient="on"] .html5-main-video,
+html[data-yt-ambient="on"] ytd-masthead,
+html[data-yt-ambient="on"] ytd-masthead #background,
+html[data-yt-ambient="on"] ytd-masthead #container,
+html[data-yt-ambient="on"] #frosted-glass,
+html[data-yt-ambient="on"] ytd-watch-flexy,
+html[data-yt-ambient="on"] ytd-watch-flexy #columns,
+html[data-yt-ambient="on"] ytd-watch-flexy #primary,
+html[data-yt-ambient="on"] ytd-watch-flexy #secondary,
+html[data-yt-ambient="on"] ytd-watch-flexy #primary-inner,
+html[data-yt-ambient="on"] ytd-watch-flexy #below,
+/* --- 묶음 2: 외형 보정(추정). 앰비언트가 비치도록 검색창/재생목록/메타 영역 배경 투명화 --- */
+html[data-yt-ambient="on"] ytd-watch-metadata,
+html[data-yt-ambient="on"] yt-searchbox,
+html[data-yt-ambient="on"] ytd-searchbox,
+html[data-yt-ambient="on"] .ytSearchboxComponentInputContainer,
+html[data-yt-ambient="on"] .ytSearchboxComponentInputBox,
+html[data-yt-ambient="on"] .ytSearchboxComponentInputBoxDark,
+html[data-yt-ambient="on"] .ytSearchboxComponentSearchButton,
+html[data-yt-ambient="on"] .ytSearchboxComponentSearchButtonDark,
+html[data-yt-ambient="on"] #search-icon-legacy,
+html[data-yt-ambient="on"] #container.ytd-searchbox,
+html[data-yt-ambient="on"] #voice-search-button,
+html[data-yt-ambient="on"] .ytSpecButtonShapeNextHost,
+html[data-yt-ambient="on"] ytd-playlist-panel-renderer,
+html[data-yt-ambient="on"] ytd-playlist-panel-renderer #container,
+html[data-yt-ambient="on"] ytd-playlist-panel-renderer .header,
+html[data-yt-ambient="on"] ytd-playlist-panel-renderer #items,
+html[data-yt-ambient="on"] ytd-playlist-panel-renderer .playlist-items {
+  background: transparent !important;
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 시네마틱(영화관) 배경 레이어 끄기 (필수, 추정) */
+html[data-yt-ambient="on"] #cinematics,
+html[data-yt-ambient="on"] #cinematics-container,
+html[data-yt-ambient="on"] #cinematics-wide-container,
+html[data-yt-ambient="on"] #cinematics-full-bleed-container {
+  display: none !important;
+}

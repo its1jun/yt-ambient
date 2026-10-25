@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Ambient Light",
+  "version": "0.3",
+  "icons": {"128": "assets/icon.png"},
+  "action": {
+    "default_icon": {"128": "assets/icon.png"},
+    "default_title": "Ambient Light",
+    "default_popup": "popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["dist/content.js"],
+      "css": ["styles/ambient.css", "styles/yt-overrides.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
