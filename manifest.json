@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Ambient Light",
   "version": "0.3",
+  "permissions": ["storage"],
   "icons": {"128": "assets/icon.png"},
   "action": {
     "default_icon": {"128": "assets/icon.png"},

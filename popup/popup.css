@@ -398,6 +398,13 @@ input {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+/* OFF 상태: aria-pressed가 false일 때 적용 */
+.power-button[aria-pressed="false"] {
+  background: var(--color-track-bg);
+  color: var(--color-text-muted);
 }
 
 .power-button:focus-visible {

@@ -56,6 +56,13 @@
     // <html>에 붙이는 속성 이름 (값 'on' 또는 속성 없음)
     debug: false,
     // true면 콘솔에 상태 변화를 출력
+    // 기능 전원 (팝업의 ON/OFF 버튼). 팝업과 콘텐츠 스크립트가 같은 값을 읽는다
+    power: {
+      storageKey: "power",
+      // chrome.storage.local에 전원 상태(true/false)를 저장하는 키
+      defaultOn: true
+      // 저장된 값이 없을 때의 전원 상태 (true면 처음부터 켜짐)
+    },
     // 영상 속 검은 띠(레터박스) 검출/제거. 영상마다 처음에 몇 번 측정해 확정하고, 이후에는 다시 측정하지 않는다
     bars: {
       enabled: true,
@@ -110,9 +117,12 @@
     mountParent: null,
     player: null,
     video: null,
-    tabVisible: true
+    tabVisible: true,
+    powerOn: false
+    // 기능 전원 (팝업 ON/OFF). 저장된 값을 읽어 오기 전에는 꺼진 것으로 본다
   });
   function deriveRunState(state) {
+    if (!state.powerOn) return "IDLE";
     if (!state.isWatchPage || !state.mountParent || !state.player || !state.video) return "IDLE";
     const isAllowedMode = CONFIG.enabledModes.includes(state.mode);
     if (!isAllowedMode || !state.tabVisible) return "ARMED";
@@ -1613,6 +1623,44 @@ void main() {
     return { attach, setLayout, start, stop, detach, destroy, onBarsChange, hasGl };
   }
 
+  // scripts/power-storage.js
+  function createPowerStorage({ store, config, env = {} }) {
+    const area = env.storage || chrome.storage.local;
+    const changeEvent = env.onChanged || chrome.storage.onChanged;
+    const key = config.power.storageKey;
+    let started = false;
+    let synced = false;
+    let listener = null;
+    function toPower(value) {
+      return typeof value === "boolean" ? value : config.power.defaultOn;
+    }
+    function start() {
+      if (started) return;
+      started = true;
+      synced = false;
+      listener = (changes, areaName) => {
+        if (areaName !== "local" || !changes[key]) return;
+        synced = true;
+        store.set({ powerOn: toPower(changes[key].newValue) });
+      };
+      changeEvent.addListener(listener);
+      area.get(key).then((result) => {
+        if (!started || synced) return;
+        synced = true;
+        store.set({ powerOn: toPower(result[key]) });
+      }).catch(() => {
+        if (started && !synced) store.set({ powerOn: config.power.defaultOn });
+      });
+    }
+    function stop() {
+      if (!started) return;
+      started = false;
+      if (listener) changeEvent.removeListener(listener);
+      listener = null;
+    }
+    return { start, stop };
+  }
+
   // scripts/main.js
   function boot() {
     if (window.__ytAmbientBooted) return;
@@ -1633,6 +1681,8 @@ void main() {
       config: CONFIG,
       computeLayout
     });
+    const powerStorage = createPowerStorage({ store, config: CONFIG });
+    powerStorage.start();
     controller.start();
   }
   boot();

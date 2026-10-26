@@ -6,6 +6,7 @@ import { createController } from './controller.js';
 import { createAdapter } from './adapter.js';
 import { createMount } from './mount.js';
 import { createRenderer } from './renderer.js';
+import { createPowerStorage } from './power-storage.js';
 
 // 확장 프로그램의 시작점. 같은 페이지에 두 번 실행되지 않도록 막고, 모듈을 만들어 연결한다.
 function boot() {
@@ -24,7 +25,10 @@ function boot() {
   const controller = createController({
     adapter, store, mount, renderer, config: CONFIG, computeLayout,
   });
+  // 팝업의 전원 상태를 store에 반영한다 (전원이 꺼져 있으면 controller가 IDLE로 둔다)
+  const powerStorage = createPowerStorage({ store, config: CONFIG });
 
+  powerStorage.start();
   controller.start();
 }
 

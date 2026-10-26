@@ -10,11 +10,13 @@ const DEFAULT_STATE = Object.freeze({
   player: null,
   video: null,
   tabVisible: true,
+  powerOn: false,         // 기능 전원 (팝업 ON/OFF). 저장된 값을 읽어 오기 전에는 꺼진 것으로 본다
 });
 
 // 상태를 보고 실행 단계를 판정한다 (순수 함수)
-// IDLE: 요소가 없거나 시청 페이지가 아님 / ARMED: 준비됐지만 표시 안 함 / RUNNING: 앰비언트 표시
+// IDLE: 전원이 꺼졌거나 요소가 없거나 시청 페이지가 아님 / ARMED: 준비됐지만 표시 안 함 / RUNNING: 앰비언트 표시
 export function deriveRunState(state) {
+  if (!state.powerOn) return 'IDLE';   // 전원이 꺼져 있으면 아무것도 하지 않는다
   if (!state.isWatchPage || !state.mountParent || !state.player || !state.video) return 'IDLE';
   const isAllowedMode = CONFIG.enabledModes.includes(state.mode);
   if (!isAllowedMode || !state.tabVisible) return 'ARMED';

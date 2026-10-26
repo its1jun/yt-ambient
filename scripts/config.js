@@ -37,6 +37,12 @@ export const CONFIG = Object.freeze({
   rootAttr: 'data-yt-ambient',         // <html>에 붙이는 속성 이름 (값 'on' 또는 속성 없음)
   debug: false,            // true면 콘솔에 상태 변화를 출력
 
+  // 기능 전원 (팝업의 ON/OFF 버튼). 팝업과 콘텐츠 스크립트가 같은 값을 읽는다
+  power: {
+    storageKey: 'power',   // chrome.storage.local에 전원 상태(true/false)를 저장하는 키
+    defaultOn: true,      // 저장된 값이 없을 때의 전원 상태 (true면 처음부터 켜짐)
+  },
+
   // 영상 속 검은 띠(레터박스) 검출/제거. 영상마다 처음에 몇 번 측정해 확정하고, 이후에는 다시 측정하지 않는다
   bars: {
     enabled: true,           // false면 검출과 제거를 모두 끈다
