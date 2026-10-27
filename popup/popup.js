@@ -1,8 +1,8 @@
 // Ambient Light popup
 //  - 전원 ON/OFF: chrome.storage에 저장 (콘텐츠 스크립트가 변경을 감지해 켜고 끈다)
 //  - data-setting 컨트롤: scripts/settings.js의 스키마대로 자동으로 불러오고 저장한다 (새 설정은 HTML에 data-setting만 붙이면 된다)
-import { CONFIG } from '../scripts/config.js';
-import { SCHEMA, createSettings, resolve, snap } from '../scripts/settings.js';
+import { CONFIG } from '../config/config.js';
+import { SCHEMA, createSettings, resolve, snap } from '../config/settings.js';
 
 (() => {
   'use strict';

@@ -1,5 +1,5 @@
 (() => {
-  // scripts/config.js
+  // config/config.js
   var CONFIG = Object.freeze({
     blurPx: 24,
     // 흐림 정도 (CSS px). 층 간격(layerGapPx)의 약 2배 안팎이면 계단이 뭉개져 부드러운 확산광이 된다
@@ -1673,7 +1673,7 @@ void main() {
     return { start, stop };
   }
 
-  // scripts/settings.js
+  // config/settings.js
   var SCHEMA = Object.freeze({
     blurPx: { min: 0, max: 80, reflow: true },
     videoFeatherPercent: { min: 0, max: 50, reflow: true },
