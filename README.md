@@ -13,6 +13,7 @@
    yt-ambient-release/
    └── yt-ambient-release/   ⬅ 이거 선택
        ├── assets/
+       ├── config/
        ├── dist/
        ├── popup/
        ├── styles/
