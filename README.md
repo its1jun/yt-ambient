@@ -19,7 +19,3 @@ npm run build   # scripts/ → dist/content.js
 ## 배포용 zip
 
 `npm run build` 후 **`manifest.json`**, **`dist/`**, **`styles/`** **`popup/`**, **`assets`** 만 담는다.
-
-```text
-zip -r ambient-light.zip manifest.json dist styles
-```
