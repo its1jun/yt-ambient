@@ -170,6 +170,17 @@ export function createController({ adapter, store, mount, renderer, config, comp
     store.set({ tabVisible: !doc.hidden });
   }
 
+  // 설정이 바뀐 뒤 화면에 다시 반영한다
+  // 이전과 같은 배치로 판정돼 건너뛰는 것을 막기 위해 기억해 둔 배치를 비우고, 실행 중이면 배치를 다시 계산한다
+  // resetBars가 true면 검은 띠 측정을 처음부터 다시 한다 (끄면 잘라낸 띠와 확대도 함께 풀린다)
+  function refresh({ resetBars = false } = {}) {
+    if (resetBars) renderer.resetBars();
+    lastLayout = null;
+    if (applied.state !== 'RUNNING') return;
+    if (renderer.hasGl()) mount.setRootAttr(true);   // --video-feather를 새 값으로 다시 넣는다
+    scheduleRelayout();
+  }
+
   // 시작: 구독과 리스너를 등록하고 adapter를 켠다 (멱등)
   function start() {
     if (started) return;
@@ -201,5 +212,5 @@ export function createController({ adapter, store, mount, renderer, config, comp
     started = false;
   }
 
-  return { start, stop };
+  return { start, stop, refresh };
 }

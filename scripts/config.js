@@ -37,6 +37,9 @@ export const CONFIG = Object.freeze({
   rootAttr: 'data-yt-ambient',         // <html>에 붙이는 속성 이름 (값 'on' 또는 속성 없음)
   debug: false,            // true면 콘솔에 상태 변화를 출력
 
+  // 팝업에서 바꾼 설정값(JSON 객체)을 chrome.storage.local에 저장하는 키. 저장된 값이 config.js 기본값보다 우선한다
+  settingsKey: 'settings',
+
   // 기능 전원 (팝업의 ON/OFF 버튼). 팝업과 콘텐츠 스크립트가 같은 값을 읽는다
   power: {
     storageKey: 'power',   // chrome.storage.local에 전원 상태(true/false)를 저장하는 키

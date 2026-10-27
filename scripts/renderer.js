@@ -187,5 +187,10 @@ export function createRenderer({ config, env = {} }) {
     detector.onChange(listener);
   }
 
-  return { attach, setLayout, start, stop, detach, destroy, onBarsChange, hasGl };
+  // 띠 측정을 처음부터 다시 하고, 확정돼 있던 띠를 0으로 되돌린다 (레터박스 제거를 켜고 끌 때 호출)
+  function resetBars() {
+    detector.reset();
+  }
+
+  return { attach, setLayout, start, stop, detach, destroy, onBarsChange, resetBars, hasGl };
 }

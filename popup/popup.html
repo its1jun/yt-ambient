@@ -33,43 +33,147 @@
         <hr class="panel__divider">
 
         <div class="setting-row">
-          <div class="setting-row__icon" aria-hidden="true">☼</div>
+          <div class="setting-row__icon" aria-hidden="true">◌</div>
 
           <div class="setting-row__info">
-            <strong class="setting-row__title">Ambient Lighting</strong>
-            <small class="setting-row__desc">Soft glow around the video</small>
-          </div>
-
-          <label class="switch" aria-label="Ambient Lighting">
-            <input class="switch__input" type="checkbox" checked>
-            <span class="switch__track"></span>
-          </label>
-        </div>
-
-        <div class="setting-row">
-          <div class="setting-row__icon" aria-hidden="true">☀</div>
-
-          <div class="setting-row__info">
-            <strong class="setting-row__title">Glow intensity</strong>
-            <small class="setting-row__desc">Adjust the ambient effect</small>
+            <strong class="setting-row__title">Blur</strong>
+            <small class="setting-row__desc">Softness of the glow</small>
           </div>
 
           <div class="slider">
-            <small class="slider__value">70%</small>
+            <small class="slider__value"></small>
             <div class="slider__control">
+              <!-- data-setting: scripts/settings.js의 설정 키. 범위는 settings.js, 기본값은 config.js에서 가져온다 -->
               <input
                 class="slider__input"
                 type="range"
-                min="0"
-                max="100"
-                value="70"
-                aria-label="Glow intensity"
+                data-setting="blurPx"
+                data-unit="px"
+                aria-label="Blur"
               >
               <div class="slider__track" aria-hidden="true">
                 <span class="slider__fill"></span>
               </div>
             </div>
           </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-row__icon" aria-hidden="true">▢</div>
+
+          <div class="setting-row__info">
+            <strong class="setting-row__title">Video Feather</strong>
+            <small class="setting-row__desc">Fade at the video edges</small>
+          </div>
+
+          <div class="slider">
+            <small class="slider__value"></small>
+            <div class="slider__control">
+              <!-- data-setting: scripts/settings.js의 설정 키. 범위는 settings.js, 기본값은 config.js에서 가져온다 -->
+              <input
+                class="slider__input"
+                type="range"
+                data-setting="videoFeatherPercent"
+                data-unit="%"
+                aria-label="Video Feather"
+              >
+              <div class="slider__track" aria-hidden="true">
+                <span class="slider__fill"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-row__icon" aria-hidden="true">◷</div>
+
+          <div class="setting-row__info">
+            <strong class="setting-row__title">Max FPS</strong>
+            <small class="setting-row__desc">Frame rate limit</small>
+          </div>
+
+          <div class="slider">
+            <small class="slider__value"></small>
+            <div class="slider__control">
+              <!-- data-setting: scripts/settings.js의 설정 키. 범위는 settings.js, 기본값은 config.js에서 가져온다 -->
+              <input
+                class="slider__input"
+                type="range"
+                data-setting="maxFps"
+                data-unit="fps"
+                aria-label="Max FPS"
+              >
+              <div class="slider__track" aria-hidden="true">
+                <span class="slider__fill"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-row__icon" aria-hidden="true">☰</div>
+
+          <div class="setting-row__info">
+            <strong class="setting-row__title">Layer Gap</strong>
+            <small class="setting-row__desc">Width of each glow layer</small>
+          </div>
+
+          <div class="slider">
+            <small class="slider__value"></small>
+            <div class="slider__control">
+              <!-- data-setting: scripts/settings.js의 설정 키. 범위는 settings.js, 기본값은 config.js에서 가져온다 -->
+              <input
+                class="slider__input"
+                type="range"
+                data-setting="layerGapPx"
+                data-unit="px"
+                aria-label="Layer Gap"
+              >
+              <div class="slider__track" aria-hidden="true">
+                <span class="slider__fill"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-row__icon" aria-hidden="true">◔</div>
+
+          <div class="setting-row__info">
+            <strong class="setting-row__title">Fan Angle</strong>
+            <small class="setting-row__desc">Spread of the glow colors</small>
+          </div>
+
+          <div class="slider">
+            <small class="slider__value"></small>
+            <div class="slider__control">
+              <!-- data-setting: scripts/settings.js의 설정 키. 범위는 settings.js, 기본값은 config.js에서 가져온다 -->
+              <input
+                class="slider__input"
+                type="range"
+                data-setting="fanAngleDeg"
+                data-unit="°"
+                aria-label="Fan Angle"
+              >
+              <div class="slider__track" aria-hidden="true">
+                <span class="slider__fill"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-row__icon" aria-hidden="true">▤</div>
+
+          <div class="setting-row__info">
+            <strong class="setting-row__title">Letterbox Removal</strong>
+            <small class="setting-row__desc">Crop black bars from the video</small>
+          </div>
+
+          <label class="switch" aria-label="Letterbox Removal">
+            <input class="switch__input" type="checkbox" data-setting="bars.enabled">
+            <span class="switch__track"></span>
+          </label>
         </div>
 
         <div class="panel__reset">

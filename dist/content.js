@@ -56,6 +56,8 @@
     // <html>에 붙이는 속성 이름 (값 'on' 또는 속성 없음)
     debug: false,
     // true면 콘솔에 상태 변화를 출력
+    // 팝업에서 바꾼 설정값(JSON 객체)을 chrome.storage.local에 저장하는 키. 저장된 값이 config.js 기본값보다 우선한다
+    settingsKey: "settings",
     // 기능 전원 (팝업의 ON/OFF 버튼). 팝업과 콘텐츠 스크립트가 같은 값을 읽는다
     power: {
       storageKey: "power",
@@ -528,6 +530,13 @@
     function onVisibilityChange() {
       store.set({ tabVisible: !doc.hidden });
     }
+    function refresh({ resetBars = false } = {}) {
+      if (resetBars) renderer.resetBars();
+      lastLayout = null;
+      if (applied.state !== "RUNNING") return;
+      if (renderer.hasGl()) mount.setRootAttr(true);
+      scheduleRelayout();
+    }
     function start() {
       if (started) return;
       started = true;
@@ -554,7 +563,7 @@
       resizeObserver = null;
       started = false;
     }
-    return { start, stop };
+    return { start, stop, refresh };
   }
 
   // scripts/adapter.js
@@ -1620,7 +1629,10 @@ void main() {
     function onBarsChange(listener) {
       detector.onChange(listener);
     }
-    return { attach, setLayout, start, stop, detach, destroy, onBarsChange, hasGl };
+    function resetBars() {
+      detector.reset();
+    }
+    return { attach, setLayout, start, stop, detach, destroy, onBarsChange, resetBars, hasGl };
   }
 
   // scripts/power-storage.js
@@ -1661,27 +1673,135 @@ void main() {
     return { start, stop };
   }
 
+  // scripts/settings.js
+  var SCHEMA = Object.freeze({
+    blurPx: { min: 0, max: 80, reflow: true },
+    videoFeatherPercent: { min: 0, max: 50, reflow: true },
+    maxFps: { values: [12, 15, 30, 60] },
+    // 매 프레임 읽으므로 바로 반영된다
+    layerGapPx: { min: 24, max: 64, reflow: true },
+    fanAngleDeg: { min: 0, max: 60, reflow: true },
+    "bars.enabled": { type: "boolean", resetBars: true }
+  });
+  function getPath(obj, path) {
+    return path.split(".").reduce((o, k) => o == null ? void 0 : o[k], obj);
+  }
+  function setPath(obj, path, value) {
+    const keys = path.split(".");
+    const last = keys.pop();
+    const parent = keys.reduce((o, k) => o[k], obj);
+    parent[last] = value;
+  }
+  function sanitizeValue(rule, value) {
+    if (rule.type === "boolean") return typeof value === "boolean" ? value : void 0;
+    if (typeof value !== "number" || !Number.isFinite(value)) return void 0;
+    if (rule.values) return rule.values.includes(value) ? value : void 0;
+    const lo = Number.isFinite(rule.min) ? rule.min : -Infinity;
+    const hi = Number.isFinite(rule.max) ? rule.max : Infinity;
+    return Math.min(hi, Math.max(lo, value));
+  }
+  function sanitize(raw) {
+    const clean = {};
+    if (!raw || typeof raw !== "object") return clean;
+    for (const key of Object.keys(SCHEMA)) {
+      if (!(key in raw)) continue;
+      const value = sanitizeValue(SCHEMA[key], raw[key]);
+      if (value !== void 0) clean[key] = value;
+    }
+    return clean;
+  }
+  function resolve(stored, config = CONFIG) {
+    const values = {};
+    for (const key of Object.keys(SCHEMA)) values[key] = getPath(config, key);
+    return { ...values, ...sanitize(stored) };
+  }
+  function createLiveConfig(config = CONFIG) {
+    return structuredClone(config);
+  }
+  function applySettings({ live, values }) {
+    const effects = { reflow: false, resetBars: false };
+    for (const key of Object.keys(SCHEMA)) {
+      const value = values[key];
+      if (value === void 0 || Object.is(getPath(live, key), value)) continue;
+      setPath(live, key, value);
+      if (SCHEMA[key].reflow) effects.reflow = true;
+      if (SCHEMA[key].resetBars) effects.resetBars = true;
+    }
+    return effects;
+  }
+  function createSettings({ config = CONFIG, env = {} } = {}) {
+    const area = env.storage || chrome.storage.local;
+    const changeEvent = env.onChanged || chrome.storage.onChanged;
+    const storageKey = config.settingsKey;
+    let overrides = {};
+    async function load() {
+      try {
+        const result = await area.get(storageKey);
+        overrides = sanitize(result[storageKey]);
+      } catch {
+        overrides = {};
+      }
+      return resolve(overrides, config);
+    }
+    async function save(key, value) {
+      const rule = SCHEMA[key];
+      if (!rule) return;
+      const clean = sanitizeValue(rule, value);
+      if (clean === void 0) return;
+      overrides = { ...overrides, [key]: clean };
+      try {
+        await area.set({ [storageKey]: overrides });
+      } catch {
+      }
+    }
+    async function reset() {
+      overrides = {};
+      try {
+        await area.remove(storageKey);
+      } catch {
+      }
+      return resolve(overrides, config);
+    }
+    function onChange(callback) {
+      const listener = (changes, areaName) => {
+        if (areaName !== "local" || !changes[storageKey]) return;
+        overrides = sanitize(changes[storageKey].newValue);
+        callback(resolve(overrides, config));
+      };
+      changeEvent.addListener(listener);
+      return () => changeEvent.removeListener(listener);
+    }
+    return { load, save, reset, onChange };
+  }
+
   // scripts/main.js
-  function boot() {
+  async function boot() {
     if (window.__ytAmbientBooted) return;
     window.__ytAmbientBooted = true;
+    const config = createLiveConfig();
+    const settings = createSettings();
+    applySettings({ live: config, values: await settings.load() });
     const store = createStore();
     const adapter = createAdapter({
       onChange: (facts) => store.set(facts),
-      config: CONFIG,
+      config,
       selectors: SEL
     });
-    const mount = createMount({ config: CONFIG });
-    const renderer = createRenderer({ config: CONFIG });
+    const mount = createMount({ config });
+    const renderer = createRenderer({ config });
     const controller = createController({
       adapter,
       store,
       mount,
       renderer,
-      config: CONFIG,
+      config,
       computeLayout
     });
-    const powerStorage = createPowerStorage({ store, config: CONFIG });
+    const powerStorage = createPowerStorage({ store, config });
+    settings.onChange((values) => {
+      const effects = applySettings({ live: config, values });
+      if (effects.reflow || effects.resetBars) controller.refresh({ resetBars: effects.resetBars });
+    });
     powerStorage.start();
     controller.start();
   }
