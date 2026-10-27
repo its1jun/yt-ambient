@@ -18,4 +18,4 @@ npm run build   # scripts/ → dist/content.js
 
 ## 배포용 zip
 
-`npm run build` 후 **`manifest.json`**, **`dist/`**, **`styles/`**, **`popup/`**, **`config/`**, **`assets/`** 만 담는다. (`config/`는 팝업이 직접 import하므로 번들되지 않고 그대로 들어간다. `scripts/`는 담지 않는다.)
+`npm run build` 후 `manifest.json`, `dist/`, `styles/`, `popup/`, `config/`, `assets/` 만 담는다.
