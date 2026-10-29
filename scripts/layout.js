@@ -274,6 +274,7 @@ export function computeLayout({ playerRect, videoRect: rawVideoRect, parentRect,
     hidden,
     visible,
     zoom,
+    videoBox: { left: videoRect.left, top: videoRect.top, width: videoRect.width, height: videoRect.height },   // 확대된 영상 사각형(화면 기준)
     draws,
   };
 }
@@ -331,6 +332,7 @@ export function layoutEquals(a, b) {
   if (!hiddenEquals(a.hidden, b.hidden)) return false;
   if (!hiddenEquals(a.visible, b.visible)) return false;
   if (Math.abs(a.zoom - b.zoom) > 0.0001) return false;
+  if (!rectEquals(a.videoBox, b.videoBox)) return false;
   if (a.draws.length !== b.draws.length) return false;
   return a.draws.every((d, i) => near(d.dx, b.draws[i].dx) && near(d.dy, b.draws[i].dy)
     && near(d.dw, b.draws[i].dw) && near(d.dh, b.draws[i].dh));

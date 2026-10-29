@@ -23,6 +23,7 @@ export function createController({ adapter, store, mount, renderer, config, comp
   let bars = { x: 0, y: 0 };   // 렌더러가 확정한 검은 띠 크기 (영상 대비 한쪽 %, 0이면 띠 없음)
   let rafId = null;
   let lastLayout = null;
+  const barCache = new Map();   // 영상(src)별로 확정된 검은 띠. 탭을 바꿨다 돌아와도 다시 측정하지 않고 이 값을 쓴다 (영상당 1회)
   let unsubscribe = null;
   let abort = null;
 
@@ -55,6 +56,11 @@ export function createController({ adapter, store, mount, renderer, config, comp
     return { left: -scrollX, top: -scrollY, right: width > 0 ? width - scrollX : null };
   }
 
+  // 지금 영상을 구분하는 키 (영상이 바뀌면 달라진다)
+  function videoKey(video) {
+    return video ? String(video.currentSrc || video.src || '') : '';
+  }
+
   // 레이아웃을 지금 계산해 적용한다. 읽기(rect 3개, 영상 확대 배율)를 먼저 모두 하고, 이전과 같으면 아무것도 쓰지 않는다
   function relayout() {
     rafId = null;
@@ -63,11 +69,21 @@ export function createController({ adapter, store, mount, renderer, config, comp
     // 확대가 적용된 영상 사각형을 확대 전으로 되돌린다 (배율은 computeLayout이 다시 정한다)
     const videoRect = scaleRectAboutCenter(applied.video.getBoundingClientRect(), 1 / readVideoScale(applied.video));
     const parentRect = applied.parent.getBoundingClientRect();
+    const videoParent = applied.video.parentElement;
+    const videoParentRect = videoParent ? videoParent.getBoundingClientRect() : playerRect;   // 세로 마스크 기준(확대되지 않는 영상 부모)
     const bounds = readViewportBounds();
     const next = computeLayout({ playerRect, videoRect, parentRect, bounds, bars, config });
+
+    // INVALID_LAYOUT에는 videoBox가 없다. 그 상태에서 좌표를 읽으면 relayout 전체가 예외로 끝나
+    // 이후의 탭 복귀/리사이즈 재계산까지 막힐 수 있다. 기존 화면은 유지하고 다음 계산을 허용한다.
+    if (!next || !next.valid || !next.videoBox) {
+      lastLayout = null;
+      return;
+    }
+
     if (lastLayout && layoutEquals(lastLayout, next)) return;
     lastLayout = next;
-    mount.applyLayout(next);
+    mount.applyLayout(next, { top: next.videoBox.top - videoParentRect.top, height: next.videoBox.height });
     renderer.setLayout(next);
   }
 
@@ -90,6 +106,10 @@ export function createController({ adapter, store, mount, renderer, config, comp
   function handleBars(next) {
     const x = Number(next && next.x) || 0;
     const y = Number(next && next.y) || 0;
+    const key = videoKey(applied.video);
+    // 이 영상의 띠가 이미 확정돼 있으면 렌더러의 재측정/초기화 결과는 무시한다
+    if (key && barCache.has(key)) return;
+    if (key && (x > 0 || y > 0)) barCache.set(key, { x, y });
     if (bars.x === x && bars.y === y) return;
     bars = { x, y };
     if (applied.state === 'RUNNING') scheduleRelayout();
@@ -98,7 +118,7 @@ export function createController({ adapter, store, mount, renderer, config, comp
   // RUNNING에서 나갈 때 공통 정리: 렌더 정지, 옵저버 해제, 예약 취소, 띠 초기화, 루트 속성 끄기
   function leaveRunning() {
     renderer.stop();
-    bars = { x: 0, y: 0 };
+    bars = { x: 0, y: 0 };   // 돌아올 때 enterRunning이 barCache에서 복원한다
     disconnectObserver();
     cancelRelayout();
     mount.setRootAttr(false);
@@ -137,6 +157,8 @@ export function createController({ adapter, store, mount, renderer, config, comp
     }
     mount.setRootAttr(true);
     mount.setVisible(true);
+    const cachedBars = barCache.get(videoKey(s.video));
+    if (cachedBars) bars = { ...cachedBars };   // 확정된 띠가 있으면 첫 배치부터 바로 적용한다
     if (parentChanged) lastLayout = null;   // 부모가 바뀌면 좌표 기준이 달라지므로 다시 적용
 
     observeElements(s.player, s.video);
@@ -174,7 +196,10 @@ export function createController({ adapter, store, mount, renderer, config, comp
   // 이전과 같은 배치로 판정돼 건너뛰는 것을 막기 위해 기억해 둔 배치를 비우고, 실행 중이면 배치를 다시 계산한다
   // resetBars가 true면 검은 띠 측정을 처음부터 다시 한다 (끄면 잘라낸 띠와 확대도 함께 풀린다)
   function refresh({ resetBars = false } = {}) {
-    if (resetBars) renderer.resetBars();
+    if (resetBars) {
+      barCache.clear();
+      renderer.resetBars();
+    }
     lastLayout = null;
     if (applied.state !== 'RUNNING') return;
     if (renderer.hasGl()) mount.setRootAttr(true);   // --video-feather를 새 값으로 다시 넣는다
