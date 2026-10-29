@@ -365,6 +365,8 @@
       hidden,
       visible,
       zoom,
+      videoBox: { left: videoRect.left, top: videoRect.top, width: videoRect.width, height: videoRect.height },
+      // 확대된 영상 사각형(화면 기준)
       draws
     };
   }
@@ -405,6 +407,7 @@
     if (!hiddenEquals(a.hidden, b.hidden)) return false;
     if (!hiddenEquals(a.visible, b.visible)) return false;
     if (Math.abs(a.zoom - b.zoom) > 1e-4) return false;
+    if (!rectEquals(a.videoBox, b.videoBox)) return false;
     if (a.draws.length !== b.draws.length) return false;
     return a.draws.every((d, i) => near(d.dx, b.draws[i].dx) && near(d.dy, b.draws[i].dy) && near(d.dw, b.draws[i].dw) && near(d.dh, b.draws[i].dh));
   }
@@ -425,6 +428,7 @@
     let bars = { x: 0, y: 0 };
     let rafId = null;
     let lastLayout = null;
+    const barCache = /* @__PURE__ */ new Map();
     let unsubscribe = null;
     let abort = null;
     function cancelRelayout() {
@@ -446,17 +450,26 @@
       const width = root ? Math.max(Number(root.clientWidth) || 0, Number(root.scrollWidth) || 0) : 0;
       return { left: -scrollX, top: -scrollY, right: width > 0 ? width - scrollX : null };
     }
+    function videoKey(video) {
+      return video ? String(video.currentSrc || video.src || "") : "";
+    }
     function relayout() {
       rafId = null;
       if (applied.state !== "RUNNING") return;
       const playerRect = applied.player.getBoundingClientRect();
       const videoRect = scaleRectAboutCenter(applied.video.getBoundingClientRect(), 1 / readVideoScale(applied.video));
       const parentRect = applied.parent.getBoundingClientRect();
+      const videoParent = applied.video.parentElement;
+      const videoParentRect = videoParent ? videoParent.getBoundingClientRect() : playerRect;
       const bounds = readViewportBounds();
       const next = computeLayout2({ playerRect, videoRect, parentRect, bounds, bars, config });
+      if (!next || !next.valid || !next.videoBox) {
+        lastLayout = null;
+        return;
+      }
       if (lastLayout && layoutEquals(lastLayout, next)) return;
       lastLayout = next;
-      mount.applyLayout(next);
+      mount.applyLayout(next, { top: next.videoBox.top - videoParentRect.top, height: next.videoBox.height });
       renderer.setLayout(next);
     }
     function scheduleRelayout() {
@@ -473,6 +486,9 @@
     function handleBars(next) {
       const x = Number(next && next.x) || 0;
       const y = Number(next && next.y) || 0;
+      const key = videoKey(applied.video);
+      if (key && barCache.has(key)) return;
+      if (key && (x > 0 || y > 0)) barCache.set(key, { x, y });
       if (bars.x === x && bars.y === y) return;
       bars = { x, y };
       if (applied.state === "RUNNING") scheduleRelayout();
@@ -508,6 +524,8 @@
       }
       mount.setRootAttr(true);
       mount.setVisible(true);
+      const cachedBars = barCache.get(videoKey(s.video));
+      if (cachedBars) bars = { ...cachedBars };
       if (parentChanged) lastLayout = null;
       observeElements(s.player, s.video);
       cancelRelayout();
@@ -531,7 +549,10 @@
       store.set({ tabVisible: !doc.hidden });
     }
     function refresh({ resetBars = false } = {}) {
-      if (resetBars) renderer.resetBars();
+      if (resetBars) {
+        barCache.clear();
+        renderer.resetBars();
+      }
       lastLayout = null;
       if (applied.state !== "RUNNING") return;
       if (renderer.hasGl()) mount.setRootAttr(true);
@@ -681,6 +702,7 @@
   }
 
   // scripts/mount.js
+  var VMASK_COVER_SLACK = 2;
   function px(value) {
     return `${value}px`;
   }
@@ -689,6 +711,8 @@
     let wrapper = null;
     let canvas = null;
     let applied = {};
+    let lastBox = null;
+    let lastBarY = 0;
     function setStyle(el, cacheKey, prop, value) {
       if (applied[cacheKey] === value) return;
       el.style[prop] = value;
@@ -718,6 +742,73 @@
       else rootStyle.removeProperty(config.zoom.scaleVar);
       applied.zoom = value;
     }
+    function isValidBox(box) {
+      return !!box && Number.isFinite(box.top) && Number.isFinite(box.height) && box.height > 0;
+    }
+    function findVideoAndParent() {
+      try {
+        const video = doc.querySelector(".html5-main-video");
+        const parent = video && video.parentElement;
+        return parent ? { video, parent } : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function measureVideoBox() {
+      try {
+        const found = findVideoAndParent();
+        if (!found) return null;
+        const v = found.video.getBoundingClientRect();
+        const p = found.parent.getBoundingClientRect();
+        const box = { top: v.top - p.top, height: v.height };
+        return isValidBox(box) ? box : null;
+      } catch (e) {
+        return null;
+      }
+    }
+    function writeRootVar(name, value) {
+      const style = doc.documentElement.style;
+      const key = `var:${name}`;
+      const current = typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : applied[key];
+      if (current === value) return;
+      style.setProperty(name, value);
+      applied[key] = value;
+    }
+    function usedBorder(prop, fallback) {
+      try {
+        const found = findVideoAndParent();
+        const win = doc.defaultView;
+        if (found && win) {
+          const value = win.getComputedStyle(found.parent)[prop];
+          if (typeof value === "string" && value.endsWith("px")) return value;
+        }
+      } catch (e) {
+      }
+      return fallback;
+    }
+    function applyVerticalMask(box, barYPercent) {
+      if (Number.isFinite(barYPercent)) lastBarY = barYPercent;
+      let useBox = isValidBox(box) ? box : null;
+      if (!useBox) useBox = measureVideoBox();
+      if (!useBox) useBox = lastBox;
+      if (!useBox) return;
+      lastBox = useBox;
+      const height = useBox.height;
+      const feather = Math.max(Number(config.videoFeatherPercent) || 0, 0);
+      const half = height / 2;
+      const bar = Math.min(Math.max(height * lastBarY / 100, 0), half);
+      const ramp = Math.min(height * feather / 100, half - bar);
+      const stops = [bar, bar + ramp, height - bar - ramp, height - bar].map((v) => `${+v.toFixed(3)}px`);
+      const coverTop = `${Math.ceil(Math.max(-useBox.top, 0)) + VMASK_COVER_SLACK}px`;
+      const coverBottom = `${Math.ceil(Math.max(useBox.top + height, 0)) + VMASK_COVER_SLACK}px`;
+      stops.forEach((v, i) => writeRootVar(`--ambient-vmask-${i}`, v));
+      writeRootVar("--ambient-vmask-y", `${+useBox.top.toFixed(3)}px`);
+      writeRootVar("--ambient-vmask-h", `${+height.toFixed(3)}px`);
+      writeRootVar("--ambient-vmask-cover-top", coverTop);
+      writeRootVar("--ambient-vmask-cover-bottom", coverBottom);
+      writeRootVar("--ambient-vmask-margin-top", usedBorder("borderTopWidth", coverTop));
+      writeRootVar("--ambient-vmask-margin-bottom", usedBorder("borderBottomWidth", coverBottom));
+    }
     function removeStaleWrapper() {
       const found = doc.getElementById(config.wrapperId);
       if (found && found !== wrapper) found.remove();
@@ -741,7 +832,18 @@
       if (wrapper.parentNode !== parent) parent.prepend(wrapper);
       return { wrapper, canvas };
     }
-    function applyLayout(layout) {
+    function applyLayout(layout, videoParentBox) {
+      try {
+        applyBoxes(layout);
+      } finally {
+        try {
+          applyVerticalMask(videoParentBox, layout && layout.bars ? layout.bars.y : void 0);
+        } catch (e) {
+          console.warn("[ambient] vertical mask failed", e);
+        }
+      }
+    }
+    function applyBoxes(layout) {
       if (!wrapper || !canvas || !layout || !layout.valid) return;
       const { wrapperBox, canvasBox } = layout;
       setStyle(wrapper, "wLeft", "left", px(wrapperBox.left));
@@ -774,10 +876,19 @@
       doc.documentElement.style.removeProperty(`${config.bars.clipVar}-y`);
       doc.documentElement.style.removeProperty("--video-feather");
       doc.documentElement.style.removeProperty(config.zoom.scaleVar);
+      for (let i = 0; i < 4; i += 1) doc.documentElement.style.removeProperty(`--ambient-vmask-${i}`);
+      doc.documentElement.style.removeProperty("--ambient-vmask-h");
+      doc.documentElement.style.removeProperty("--ambient-vmask-y");
+      doc.documentElement.style.removeProperty("--ambient-vmask-cover-top");
+      doc.documentElement.style.removeProperty("--ambient-vmask-cover-bottom");
+      doc.documentElement.style.removeProperty("--ambient-vmask-margin-top");
+      doc.documentElement.style.removeProperty("--ambient-vmask-margin-bottom");
       if (wrapper) wrapper.remove();
       wrapper = null;
       canvas = null;
       applied = {};
+      lastBox = null;
+      lastBarY = 0;
     }
     return { mount, applyLayout, setVisible, setRootAttr, unmount };
   }

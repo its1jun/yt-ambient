@@ -34,17 +34,41 @@ html[data-yt-ambient="on"] .html5-main-video {
   scale: var(--ambient-video-scale);
 }
 
-/* 앰비언트가 켜진 동안 원본 영상의 상하좌우 가장자리를 부드럽게 투명화한다 */
-/* 잘라낸 검은 띠(--ambient-clip-inset-x/-y, 띠가 없으면 0%)만큼 페더링 시작 위치를 안쪽으로 옮긴다 */
+/* 앰비언트가 켜진 동안 원본 영상의 가장자리를 부드럽게 투명화한다 */
+/* 한 요소에 마스크 2개를 합성(mask-composite)하면 영상 좌우 가장자리 열에 세로 줄이 생긴다(u(5), u(6)으로 확인). 그래서 요소마다 마스크를 하나만 둔다 */
+/* 가로: 영상 요소. 잘라낸 좌우 띠(--ambient-clip-inset-x, 없으면 0%)만큼 시작 위치를 안쪽으로 옮긴다 */
 html[data-yt-ambient="on"] .html5-main-video {
   --clip-x: var(--ambient-clip-inset-x, 0%);
-  --clip-y: var(--ambient-clip-inset-y, 0%);
-  -webkit-mask-image:
-    linear-gradient(to right, transparent var(--clip-x), #000 calc(var(--clip-x) + var(--video-feather)), #000 calc(100% - var(--clip-x) - var(--video-feather)), transparent calc(100% - var(--clip-x))),
-    linear-gradient(to bottom, transparent var(--clip-y), #000 calc(var(--clip-y) + var(--video-feather)), #000 calc(100% - var(--clip-y) - var(--video-feather)), transparent calc(100% - var(--clip-y)));
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(to right, transparent var(--clip-x), #000 calc(var(--clip-x) + var(--video-feather)), #000 calc(100% - var(--clip-x) - var(--video-feather)), transparent calc(100% - var(--clip-x))),
-    linear-gradient(to bottom, transparent var(--clip-y), #000 calc(var(--clip-y) + var(--video-feather)), #000 calc(100% - var(--clip-y) - var(--video-feather)), transparent calc(100% - var(--clip-y)));
-  mask-composite: intersect;
+  -webkit-mask-image: linear-gradient(to right, transparent var(--clip-x), #000 calc(var(--clip-x) + var(--video-feather)), #000 calc(100% - var(--clip-x) - var(--video-feather)), transparent calc(100% - var(--clip-x)));
+  mask-image: linear-gradient(to right, transparent var(--clip-x), #000 calc(var(--clip-x) + var(--video-feather)), #000 calc(100% - var(--clip-x) - var(--video-feather)), transparent calc(100% - var(--clip-x)));
+}
+
+/* 세로: 영상의 부모 요소(확대되지 않음). 이 마스크는 영상 요소에 넣지 않는다(영상 요소에는 위의 가로 마스크 하나만 둔다) */
+/* 이 부모는 높이가 0이고 영상이 그 밖으로 삐져나온다(확인: 1520.8x0). 마스크는 기본적으로 요소 상자 안에서만 적용되어 밖의 영상이 통째로 가려지므로,
+   마스크 이미지를 "확대된 영상 상자"와 정확히 겹치게 직접 배치하고 상자 밖도 자르지 않는다(mask-clip: no-clip) */
+/* 영상이 확대되면 부모 위쪽보다 위로 삐져나올 수 있어서(top이 음수), 마스크 이미지 위치(--ambient-vmask-y)도 mount.js가 넣는다
+   정지점 --ambient-vmask-0~3은 마스크 이미지(=영상 상자) 위쪽 기준 px이다. 값은 전부 mount.js가 <html>에 넣는다 */
+html[data-yt-ambient="on"] :has(> .html5-main-video) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent var(--ambient-vmask-0), #000 var(--ambient-vmask-1), #000 var(--ambient-vmask-2), transparent var(--ambient-vmask-3));
+  mask-image: linear-gradient(to bottom, transparent var(--ambient-vmask-0), #000 var(--ambient-vmask-1), #000 var(--ambient-vmask-2), transparent var(--ambient-vmask-3));
+  -webkit-mask-size: 100% var(--ambient-vmask-h);
+  mask-size: 100% var(--ambient-vmask-h);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: 0 var(--ambient-vmask-y);
+  mask-position: 0 var(--ambient-vmask-y);
+  mask-origin: padding-box;
+  mask-clip: no-clip;
+  /* Chromium은 마스크를 "마스크를 건 요소의 상자 주변"에만 그린다. 상자 밖으로 삐져나온 부분은 마스크 없이 그대로 보인다
+     (Chromium 153에서 전부 투명한 마스크로 확인: 부모 높이 0 → 마스크 전체 미적용, 1px → 위쪽 일부(약 155px)만 적용, 영상 아래쪽·확대로 삐져나온 위쪽은 미적용).
+     그래서 부모 상자를 영상 전체를 덮을 만큼 늘린다. 투명 border로 늘리고 같은 크기의 음수 margin으로 상쇄하므로 레이아웃은 변하지 않는다:
+     border는 padding box를 움직이지 않아 자식(영상)의 기준점이 그대로이고, 뒤따르는 요소의 위치도 그대로다(확인: 형제 요소와 영상의 top 불변).
+     mask-origin을 padding-box로 둬서 마스크 좌표(--ambient-vmask-y)는 늘리기 전 부모 기준으로 유지한다.
+     margin은 border의 "지정값"이 아니라 브라우저가 실제로 적용한 폭(소수 지정값은 내림된다)을 mount.js가 읽어 --ambient-vmask-margin-*로 넣는다. 그래야 정확히 상쇄된다
+     background-clip: padding-box는 부모에 배경이 있어도 늘어난 투명 border 영역에 배경이 칠해져 띠가 생기지 않게 한다 */
+  border-top: var(--ambient-vmask-cover-top, 0px) solid transparent;
+  border-bottom: var(--ambient-vmask-cover-bottom, 0px) solid transparent;
+  margin-top: calc(-1 * var(--ambient-vmask-margin-top, var(--ambient-vmask-cover-top, 0px)));
+  margin-bottom: calc(-1 * var(--ambient-vmask-margin-bottom, var(--ambient-vmask-cover-bottom, 0px)));
+  background-clip: padding-box;
 }
